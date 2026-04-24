@@ -1,0 +1,83 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,300&family=DM+Mono:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-display: 'DM Serif Display', serif;
+  --font-body: 'DM Sans', sans-serif;
+  --font-mono: 'DM Mono', monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: var(--font-body);
+  background-color: #f9f6f0;
+  color: #1a0e07;
+  min-height: 100vh;
+}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #f3ece0; }
+::-webkit-scrollbar-thumb { background: #ba9878; border-radius: 3px; }
+
+/* ── Utility ── */
+.font-display { font-family: var(--font-display); }
+.font-mono { font-family: var(--font-mono); }
+
+/* ── Grain overlay ── */
+.grain::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.03;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+  z-index: 9999;
+}
+
+/* ── Page fade animation ── */
+.page-enter {
+  animation: fadeUp 0.4s ease-out forwards;
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Card hover ── */
+.card-lift {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.card-lift:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 12px 32px rgba(26, 14, 7, 0.12);
+}
+
+/* ── Chat bubble ── */
+.bubble-enter {
+  animation: slideIn 0.2s ease-out forwards;
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Status badges ── */
+.badge-pending  { @apply bg-amber-100 text-amber-800 border border-amber-200; }
+.badge-approved { @apply bg-emerald-100 text-emerald-800 border border-emerald-200; }
+.badge-rejected { @apply bg-red-100 text-red-800 border border-red-200; }
+.badge-accepted { @apply bg-emerald-100 text-emerald-800 border border-emerald-200; }
+.badge-locked   { @apply bg-ink-100 text-ink-700 border border-ink-200; }
+.badge-unlocked { @apply bg-emerald-100 text-emerald-800 border border-emerald-200; }
