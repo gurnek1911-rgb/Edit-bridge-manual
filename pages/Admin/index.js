@@ -13,6 +13,7 @@ export default function Admin() {
   const router = useRouter();
   const [payments, setPayments] = useState([]);
   const [editors, setEditors] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => {
@@ -22,15 +23,20 @@ export default function Admin() {
         loadData();
       }
     });
+
     return () => unsub();
-  }, []);
+  }, [router]);
 
   const loadData = async () => {
+    setLoading(true);
+
     const p = await getDocs(collection(db, "payments"));
     const e = await getDocs(collection(db, "editors"));
 
     setPayments(p.docs.map(d => ({ id: d.id, ...d.data() })));
     setEditors(e.docs.map(d => ({ id: d.id, ...d.data() })));
+
+    setLoading(false);
   };
 
   const approvePayment = async (id) => {
@@ -48,22 +54,30 @@ export default function Admin() {
     loadData();
   };
 
+  if (loading) return <p>Loading admin...</p>;
+
   return (
     <div>
-      <h1>Admin</h1>
+      <h1>Admin Panel</h1>
 
-      {payments.map(p => (
+      <h2>Payments</h2>
+      {payments?.map((p) => (
         <div key={p.id}>
           {p.email} - {p.status}
-          <button onClick={()=>approvePayment(p.id)}>Approve</button>
-          <button onClick={()=>rejectPayment(p.id)}>Reject</button>
+          {p.status === "pending" && (
+            <>
+              <button onClick={()=>approvePayment(p.id)}>Approve</button>
+              <button onClick={()=>rejectPayment(p.id)}>Reject</button>
+            </>
+          )}
         </div>
       ))}
 
       <h2>Editors</h2>
-      {editors.map(e => (
+      {editors?.map((e) => (
         <div key={e.id}>
-          {e.name} - {e.approved ? "Yes" : "No"}
+          {e.name} - {e.approved ? "Approved" : "Pending"}
+
           {!e.approved && (
             <button onClick={()=>approveEditor(e.id)}>Approve</button>
           )}
