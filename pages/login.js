@@ -4,9 +4,9 @@ import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword
 } from "firebase/auth";
-import { auth } from "../firebase";
+import { auth } from "../lib/firebase";
 
-export default function LoginPage() {
+export default function Login() {
   const router = useRouter();
   const [mode, setMode] = useState("login");
   const [email, setEmail] = useState("");
@@ -29,8 +29,8 @@ export default function LoginPage() {
 
   return (
     <form onSubmit={handle}>
-      <input placeholder="Email" onChange={(e)=>setEmail(e.target.value)} />
-      <input placeholder="Password" type="password" onChange={(e)=>setPassword(e.target.value)} />
+      <input placeholder="email" onChange={(e)=>setEmail(e.target.value)} />
+      <input type="password" placeholder="password" onChange={(e)=>setPassword(e.target.value)} />
       <button>{mode}</button>
 
       <p onClick={()=>setMode(mode==="login"?"signup":"login")}>
