@@ -1,6 +1,6 @@
 import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
-import { auth, db } from "../../firebase";
+import { auth, db } from "../../lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import {
   collection,
@@ -17,14 +17,14 @@ export default function Chat() {
 
   const [user, setUser] = useState(null);
   const [messages, setMessages] = useState([]);
-  const [msg, setMsg] = useState("");
+  const [text, setText] = useState("");
 
   useEffect(() => {
     return onAuthStateChanged(auth, (u) => {
       if (!u) router.push("/login");
       else setUser(u);
     });
-  }, []);
+  }, [router]);
 
   useEffect(() => {
     if (!chatId) return;
@@ -42,30 +42,29 @@ export default function Chat() {
 
   const send = async (e) => {
     e.preventDefault();
-    if (!msg) return;
+
+    if (!text.trim()) return;
 
     await addDoc(collection(db, "messages"), {
       chatId,
-      text: msg,
+      text,
       senderId: user.uid,
       createdAt: new Date()
     });
 
-    setMsg("");
+    setText("");
   };
 
-  if (!chatId) return null;
+  if (!chatId) return <p>Loading...</p>;
 
   return (
     <div>
       {messages.map(m => (
-        <p key={m.id}>
-          {m.senderId}: {m.text}
-        </p>
+        <p key={m.id}>{m.text}</p>
       ))}
 
       <form onSubmit={send}>
-        <input value={msg} onChange={(e)=>setMsg(e.target.value)} />
+        <input value={text} onChange={(e)=>setText(e.target.value)} />
         <button>Send</button>
       </form>
     </div>
