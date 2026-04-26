@@ -8,7 +8,11 @@ import {
   query,
   where,
   orderBy,
-  onSnapshot
+  onSnapshot,
+  doc,
+  setDoc,
+  getDoc,
+  updateDoc
 } from "firebase/firestore";
 
 export default function ChatPage() {
@@ -20,22 +24,24 @@ export default function ChatPage() {
   const [text, setText] = useState("");
   const [loading, setLoading] = useState(true);
 
+  const [deal, setDeal] = useState(null);
+  const [showDealBox, setShowDealBox] = useState(false);
+  const [dealAmount, setDealAmount] = useState("");
+  const [counterAmount, setCounterAmount] = useState("");
+
   const bottomRef = useRef(null);
 
-  // Auth check
+  // Auth
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
-      if (!u) {
-        router.push("/login");
-      } else {
-        setUser(u);
-      }
+      if (!u) router.push("/client-login");
+      else setUser(u);
     });
 
     return () => unsub();
-  }, [router]);
+  }, []);
 
-  // Load messages
+  // Messages
   useEffect(() => {
     if (!chatId) return;
 
@@ -46,12 +52,13 @@ export default function ChatPage() {
     );
 
     const unsub = onSnapshot(q, (snap) => {
-      const data = snap.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data()
-      }));
+      setMessages(
+        snap.docs.map((d) => ({
+          id: d.id,
+          ...d.data()
+        }))
+      );
 
-      setMessages(data);
       setLoading(false);
 
       setTimeout(() => {
@@ -64,11 +71,26 @@ export default function ChatPage() {
     return () => unsub();
   }, [chatId]);
 
-  // Send message
+  // Deal live
+  useEffect(() => {
+    if (!chatId) return;
+
+    const unsub = onSnapshot(doc(db, "deals", chatId), (snap) => {
+      if (snap.exists()) {
+        setDeal(snap.data());
+      } else {
+        setDeal(null);
+      }
+    });
+
+    return () => unsub();
+  }, [chatId]);
+
+  // Send Message
   const send = async (e) => {
     e.preventDefault();
 
-    if (!text.trim() || !user) return;
+    if (!text.trim()) return;
 
     await addDoc(collection(db, "messages"), {
       chatId,
@@ -81,50 +103,196 @@ export default function ChatPage() {
     setText("");
   };
 
-  const logoutBack = () => {
-    router.back();
+  // Create Deal (Client/Admin)
+  const createDeal = async () => {
+    if (!dealAmount) return alert("Enter amount");
+
+    await setDoc(doc(db, "deals", chatId), {
+      chatId,
+      amount: Number(dealAmount),
+      status: "pending",
+      requestedBy: user.email,
+      platformFee: Number(dealAmount) * 0.1,
+      editorEarning: Number(dealAmount) * 0.9,
+      createdAt: new Date()
+    });
+
+    setShowDealBox(false);
+    setDealAmount("");
   };
 
-  const isLink = (msg) => {
-    return (
-      msg.includes("http://") ||
-      msg.includes("https://")
-    );
+  // Accept
+  const acceptDeal = async () => {
+    const ok = confirm("Accept this deal?");
+    if (!ok) return;
+
+    const ok2 = confirm("Final confirmation?");
+    if (!ok2) return;
+
+    await updateDoc(doc(db, "deals", chatId), {
+      status: "accepted"
+    });
+  };
+
+  // Reject
+  const rejectDeal = async () => {
+    const ok = confirm("Reject deal?");
+    if (!ok) return;
+
+    const ok2 = confirm("Are you sure?");
+    if (!ok2) return;
+
+    await updateDoc(doc(db, "deals", chatId), {
+      status: "rejected"
+    });
+  };
+
+  // Counter Offer
+  const counterOffer = async () => {
+    if (!counterAmount) return;
+
+    await updateDoc(doc(db, "deals", chatId), {
+      amount: Number(counterAmount),
+      platformFee: Number(counterAmount) * 0.1,
+      editorEarning: Number(counterAmount) * 0.9,
+      status: "countered"
+    });
+
+    setCounterAmount("");
+  };
+
+  // Payment Received
+  const markPaid = async () => {
+    await updateDoc(doc(db, "deals", chatId), {
+      status: "paid"
+    });
+
+    // add earning score to editor
+    const editorId = chatId.split("_").pop();
+
+    const ref = doc(db, "editors", editorId);
+    const snap = await getDoc(ref);
+
+    if (snap.exists()) {
+      const old = snap.data().earnings || 0;
+
+      await updateDoc(ref, {
+        earnings: old + deal.editorEarning,
+        totalDeals: (snap.data().totalDeals || 0) + 1
+      });
+    }
   };
 
   if (!chatId || !user) {
-    return (
-      <div style={styles.loading}>
-        Loading Chat...
-      </div>
-    );
+    return <div style={styles.loading}>Loading...</div>;
   }
 
   return (
     <div style={styles.page}>
       {/* Header */}
       <div style={styles.header}>
-        <button onClick={logoutBack} style={styles.backBtn}>
+        <button
+          style={styles.back}
+          onClick={() => router.back()}
+        >
           ← Back
         </button>
 
-        <div>
-          <h2 style={{ margin: 0 }}>💬 Private Chat</h2>
-          <p style={styles.sub}>
-            Secure messaging + Drive links
-          </p>
-        </div>
+        <h2>💬 Deal Chat</h2>
+
+        <button
+          style={styles.dealBtn}
+          onClick={() => setShowDealBox(!showDealBox)}
+        >
+          💼 Deal
+        </button>
       </div>
+
+      {/* Deal Create */}
+      {showDealBox && (
+        <div style={styles.panel}>
+          <input
+            placeholder="Deal Amount ₹"
+            value={dealAmount}
+            onChange={(e) =>
+              setDealAmount(e.target.value)
+            }
+            style={styles.input}
+          />
+
+          <button
+            style={styles.green}
+            onClick={createDeal}
+          >
+            Send Deal Offer
+          </button>
+        </div>
+      )}
+
+      {/* Deal Status */}
+      {deal && (
+        <div style={styles.dealCard}>
+          <h3>💼 Active Deal</h3>
+
+          <p>Amount: ₹{deal.amount}</p>
+          <p>Status: {deal.status}</p>
+          <p>Platform Fee: ₹{deal.platformFee}</p>
+          <p>Editor Earns: ₹{deal.editorEarning}</p>
+
+          {(deal.status === "pending" ||
+            deal.status === "countered") && (
+            <>
+              <button
+                style={styles.green}
+                onClick={acceptDeal}
+              >
+                Accept
+              </button>
+
+              <button
+                style={styles.red}
+                onClick={rejectDeal}
+              >
+                Reject
+              </button>
+
+              <input
+                placeholder="Counter Offer ₹"
+                value={counterAmount}
+                onChange={(e) =>
+                  setCounterAmount(e.target.value)
+                }
+                style={styles.input}
+              />
+
+              <button
+                style={styles.blue}
+                onClick={counterOffer}
+              >
+                Counter Offer
+              </button>
+            </>
+          )}
+
+          {deal.status === "accepted" && (
+            <button
+              style={styles.green}
+              onClick={markPaid}
+            >
+              Payment Received
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Messages */}
       <div style={styles.chatBox}>
         {loading ? (
-          <p>Loading messages...</p>
-        ) : messages.length === 0 ? (
-          <p>No messages yet.</p>
+          <p>Loading chat...</p>
         ) : (
           messages.map((m) => {
-            const mine = m.senderId === user.uid;
+            const mine =
+              m.senderId === user.uid;
 
             return (
               <div
@@ -134,32 +302,22 @@ export default function ChatPage() {
                   justifyContent: mine
                     ? "flex-end"
                     : "flex-start",
-                  marginBottom: "12px"
+                  marginBottom: "10px"
                 }}
               >
                 <div
                   style={{
-                    ...styles.bubble,
+                    ...styles.msg,
                     background: mine
-                      ? "linear-gradient(135deg,#7c3aed,#9333ea)"
+                      ? "#7c3aed"
                       : "#1e293b"
                   }}
                 >
-                  {isLink(m.text) ? (
-                    <a
-                      href={m.text}
-                      target="_blank"
-                      rel="noreferrer"
-                      style={styles.link}
-                    >
-                      📎 Open Shared File
-                    </a>
-                  ) : (
-                    <div>{m.text}</div>
-                  )}
-
-                  <small style={styles.small}>
-                    {mine ? "You" : "Other User"}
+                  <div>{m.text}</div>
+                  <small>
+                    {mine
+                      ? "You"
+                      : m.senderEmail}
                   </small>
                 </div>
               </div>
@@ -171,15 +329,23 @@ export default function ChatPage() {
       </div>
 
       {/* Input */}
-      <form onSubmit={send} style={styles.form}>
+      <form
+        onSubmit={send}
+        style={styles.footer}
+      >
         <input
           value={text}
-          onChange={(e) => setText(e.target.value)}
-          placeholder="Type message or paste Drive link..."
+          onChange={(e) =>
+            setText(e.target.value)
+          }
+          placeholder="Type message..."
           style={styles.input}
         />
 
-        <button type="submit" style={styles.sendBtn}>
+        <button
+          type="submit"
+          style={styles.send}
+        >
           Send
         </button>
       </form>
@@ -190,43 +356,52 @@ export default function ChatPage() {
 const styles = {
   page: {
     minHeight: "100vh",
-    display: "flex",
-    flexDirection: "column",
     background:
       "linear-gradient(135deg,#0f172a,#1e1b4b,#581c87)",
-    color: "white"
+    color: "white",
+    display: "flex",
+    flexDirection: "column"
   },
 
   loading: {
     minHeight: "100vh",
+    background: "#0f172a",
+    color: "white",
     display: "flex",
     justifyContent: "center",
-    alignItems: "center",
-    background: "#0f172a",
-    color: "white"
+    alignItems: "center"
   },
 
   header: {
-    padding: "16px 20px",
-    borderBottom: "1px solid rgba(255,255,255,0.1)",
+    padding: "15px",
     display: "flex",
-    alignItems: "center",
-    gap: "15px"
+    justifyContent: "space-between",
+    alignItems: "center"
   },
 
-  sub: {
-    margin: 0,
-    fontSize: "13px",
-    color: "#cbd5e1"
-  },
-
-  backBtn: {
-    padding: "10px 14px",
-    borderRadius: "10px",
+  back: {
+    padding: "10px",
     border: "none",
-    background: "#334155",
-    color: "white",
-    cursor: "pointer"
+    borderRadius: "10px"
+  },
+
+  dealBtn: {
+    padding: "10px 14px",
+    background: "#f59e0b",
+    border: "none",
+    borderRadius: "10px",
+    color: "white"
+  },
+
+  panel: {
+    padding: "15px"
+  },
+
+  dealCard: {
+    margin: "15px",
+    padding: "18px",
+    borderRadius: "16px",
+    background: "rgba(255,255,255,0.08)"
   },
 
   chatBox: {
@@ -235,49 +410,59 @@ const styles = {
     padding: "20px"
   },
 
-  bubble: {
-    maxWidth: "75%",
-    padding: "12px 16px",
-    borderRadius: "18px",
-    boxShadow: "0 4px 14px rgba(0,0,0,0.25)"
+  msg: {
+    padding: "12px",
+    borderRadius: "14px",
+    maxWidth: "70%"
   },
 
-  small: {
-    display: "block",
-    marginTop: "8px",
-    opacity: 0.7,
-    fontSize: "11px"
-  },
-
-  link: {
-    color: "#67e8f9",
-    textDecoration: "underline",
-    fontWeight: "bold"
-  },
-
-  form: {
+  footer: {
     display: "flex",
     gap: "10px",
-    padding: "16px",
-    borderTop: "1px solid rgba(255,255,255,0.1)"
+    padding: "15px"
   },
 
   input: {
     flex: 1,
-    padding: "14px",
-    borderRadius: "14px",
-    border: "none",
-    outline: "none",
-    fontSize: "15px"
+    padding: "12px",
+    borderRadius: "12px",
+    border: "none"
   },
 
-  sendBtn: {
-    padding: "14px 20px",
-    borderRadius: "14px",
-    border: "none",
+  send: {
+    padding: "12px 18px",
     background: "#8b5cf6",
+    border: "none",
+    borderRadius: "12px",
+    color: "white"
+  },
+
+  green: {
+    padding: "10px",
+    marginTop: "10px",
+    background: "#10b981",
+    border: "none",
+    borderRadius: "10px",
     color: "white",
-    fontWeight: "bold",
-    cursor: "pointer"
+    marginRight: "8px"
+  },
+
+  red: {
+    padding: "10px",
+    marginTop: "10px",
+    background: "#ef4444",
+    border: "none",
+    borderRadius: "10px",
+    color: "white",
+    marginRight: "8px"
+  },
+
+  blue: {
+    padding: "10px",
+    marginTop: "10px",
+    background: "#3b82f6",
+    border: "none",
+    borderRadius: "10px",
+    color: "white"
   }
 };
