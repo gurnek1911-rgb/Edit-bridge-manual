@@ -1,7 +1,8 @@
 import { useRouter } from "next/router";
 import { useState } from "react";
-import { signInWithEmailAndPassword } from "firebase/auth";
-import { auth } from "../lib/firebase";
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from "firebase/auth";
+import { auth, db } from "../lib/firebase";
+import { doc, setDoc } from "firebase/firestore";
 
 export default function Login() {
   const router = useRouter();
@@ -10,11 +11,11 @@ export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
+  // 🔐 LOGIN
   const login = async () => {
     try {
       await signInWithEmailAndPassword(auth, email, password);
 
-      // 🔥 Redirect based on login type (NOT homepage)
       if (type === "client") {
         router.push("/client");
       } else if (type === "editor") {
@@ -22,8 +23,26 @@ export default function Login() {
       } else if (type === "admin") {
         router.push("/admin");
       } else {
-        router.push("/client"); // fallback
+        router.push("/client");
       }
+
+    } catch (err) {
+      alert(err.message);
+    }
+  };
+
+  // 🆕 SIGNUP (CLIENT ONLY)
+  const signup = async () => {
+    try {
+      const userCred = await createUserWithEmailAndPassword(auth, email, password);
+
+      // save role in firestore
+      await setDoc(doc(db, "users", userCred.user.uid), {
+        role: "client"
+      });
+
+      alert("Account created!");
+      router.push("/client");
 
     } catch (err) {
       alert(err.message);
@@ -35,10 +54,26 @@ export default function Login() {
       <div style={card}>
         <h1>Login</h1>
 
-        <input placeholder="Email" onChange={(e)=>setEmail(e.target.value)} style={input}/>
-        <input type="password" placeholder="Password" onChange={(e)=>setPassword(e.target.value)} style={input}/>
+        <input
+          placeholder="Email"
+          onChange={(e)=>setEmail(e.target.value)}
+          style={input}
+        />
+
+        <input
+          type="password"
+          placeholder="Password"
+          onChange={(e)=>setPassword(e.target.value)}
+          style={input}
+        />
 
         <button onClick={login} style={btn}>Login</button>
+
+        {/* 🆕 SIGNUP BUTTON */}
+        <button onClick={signup} style={signupBtn}>
+          Create Client Account
+        </button>
+
       </div>
     </div>
   );
@@ -73,6 +108,16 @@ const btn = {
   padding: "12px",
   marginTop: "15px",
   background: "#06b6d4",
+  color: "white",
+  border: "none",
+  borderRadius: "10px",
+};
+
+const signupBtn = {
+  width: "100%",
+  padding: "12px",
+  marginTop: "10px",
+  background: "#22c55e",
   color: "white",
   border: "none",
   borderRadius: "10px",
