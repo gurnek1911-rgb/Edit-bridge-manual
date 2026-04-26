@@ -8,7 +8,10 @@ import {
   onSnapshot,
   deleteDoc,
   doc,
-  runTransaction
+  runTransaction,
+  serverTimestamp,
+  query,
+  orderBy
 } from "firebase/firestore";
 import { useRouter } from "next/router";
 
@@ -19,43 +22,60 @@ export default function Chat() {
 
   const room = router.query.room;
 
-  // 🔐 CREDIT CHECK
+  // 🔐 CREDIT CHECK (runs once)
   useEffect(() => {
     const run = async () => {
+      if (!auth.currentUser) return;
+
       const ref = doc(db, "users", auth.currentUser.uid);
 
-      await runTransaction(db, async (t) => {
-        const snap = await t.get(ref);
-        let c = snap.data()?.credits || 0;
+      try {
+        await runTransaction(db, async (t) => {
+          const snap = await t.get(ref);
 
-        if (c < 10) {
-          router.push("/payment");
-          throw "no credit";
-        }
+          if (!snap.exists()) throw "User missing";
 
-        t.update(ref, { credits: c - 10 });
-      });
+          let credits = snap.data().credits || 0;
+
+          if (credits < 10) {
+            router.push("/payment");
+            throw "No credits";
+          }
+
+          t.update(ref, { credits: credits - 10 });
+        });
+      } catch (err) {
+        console.log(err);
+      }
     };
 
     if (room) run();
   }, [room]);
 
-  // 📡 LOAD CHAT
+  // 📡 LOAD CHAT (real-time)
   useEffect(() => {
     if (!room) return;
 
-    return onSnapshot(
+    const q = query(
       collection(db, "chats", room, "messages"),
-      (s) => setMsgs(s.docs.map(d => ({ id: d.id, ...d.data() })))
+      orderBy("createdAt", "asc")
     );
+
+    return onSnapshot(q, (snapshot) => {
+      setMsgs(snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })));
+    });
   }, [room]);
 
   const send = async () => {
-    if (!text) return;
+    if (!text || !auth.currentUser) return;
 
     await addDoc(collection(db, "chats", room, "messages"), {
       text,
-      user: auth.currentUser.email
+      user: auth.currentUser.email,
+      createdAt: serverTimestamp()
     });
 
     setText("");
@@ -67,12 +87,13 @@ export default function Chat() {
 
   const clear = async () => {
     if (!confirm("Clear chat?")) return;
+
     msgs.forEach(m => del(m.id));
   };
 
   return (
     <div style={wrap}>
-      
+
       <h1>💬 Private Chat</h1>
 
       <button onClick={clear} style={clearBtn}>
@@ -82,7 +103,9 @@ export default function Chat() {
       <div style={chatBox}>
         {msgs.map(m => (
           <div key={m.id} style={msgRow}>
-            <span><b>{m.user}</b>: {m.text}</span>
+            <span>
+              <b>{m.user}</b>: {m.text}
+            </span>
             <button onClick={()=>del(m.id)} style={delBtn}>❌</button>
           </div>
         ))}
@@ -112,11 +135,11 @@ const wrap = {
 };
 
 const chatBox = {
-  height: "320px",
+  height: "350px",
   overflow: "auto",
   background: "#111",
   padding: "10px",
-  borderRadius: "10px",
+  borderRadius: "12px",
   marginTop: "10px"
 };
 
@@ -132,7 +155,8 @@ const msgRow = {
 const delBtn = {
   background: "transparent",
   border: "none",
-  color: "#ef4444"
+  color: "#ef4444",
+  cursor: "pointer"
 };
 
 const clearBtn = {
@@ -140,7 +164,8 @@ const clearBtn = {
   padding: "8px",
   borderRadius: "8px",
   border: "none",
-  color: "white"
+  color: "white",
+  cursor: "pointer"
 };
 
 const input = {
@@ -158,5 +183,6 @@ const sendBtn = {
   background: "#6366f1",
   border: "none",
   borderRadius: "10px",
-  color: "white"
+  color: "white",
+  cursor: "pointer"
 };
