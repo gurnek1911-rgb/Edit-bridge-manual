@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { db, auth } from "../lib/firebase";
-import { addDoc, collection } from "firebase/firestore";
+import { addDoc, collection, serverTimestamp } from "firebase/firestore";
 
 export default function Payment() {
   const [txn, setTxn] = useState("");
@@ -13,96 +13,68 @@ export default function Payment() {
     await addDoc(collection(db, "payments"), {
       txnId: txn,
       status: "pending",
-      userId: user.uid
+      userId: user.uid,
+      amount: 10,
+      createdAt: serverTimestamp()
     });
 
-    alert("Submitted for approval");
+    alert("Payment submitted");
   };
 
   return (
     <div style={wrap}>
       <div style={card}>
+        <h1>💳 Unlock Credits</h1>
 
-        <h1>Unlock Credits</h1>
-        <p>Send ₹10 to unlock 50 credits</p>
+        <p>Send ₹10 → Get 50 credits</p>
 
         <div style={upi}>yourupi@okaxis</div>
 
-        <div style={qr}>QR CODE</div>
-
         <input
-          placeholder="Transaction ID"
+          placeholder="Enter Transaction ID"
           onChange={(e)=>setTxn(e.target.value)}
           style={input}
         />
 
-        <button onClick={submit} style={btn}>
-          Submit
-        </button>
-
-        <div style={rules}>
-          <p>• Pay ₹10 for credits</p>
-          <p>• Approval in 24 hours</p>
-          <p>• Fake payments = ban</p>
-        </div>
-
+        <button onClick={submit} style={btn}>Submit</button>
       </div>
     </div>
   );
 }
 
+/* UI */
 const wrap = {
   minHeight: "100vh",
   display: "flex",
   justifyContent: "center",
   alignItems: "center",
-  background: "linear-gradient(135deg,#020617,#0f172a,#4c1d95)",
-  color: "white"
+  background: "linear-gradient(135deg,#020617,#4c1d95)"
 };
 
 const card = {
-  width: "320px",
-  padding: "20px",
+  padding: "25px",
   borderRadius: "20px",
   background: "rgba(30,27,75,0.8)",
-  backdropFilter: "blur(10px)"
-};
-
-const upi = {
-  textAlign: "center",
-  margin: "10px 0",
-  fontWeight: "bold"
-};
-
-const qr = {
-  height: "120px",
-  background: "#111",
-  borderRadius: "10px",
-  margin: "10px 0",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center"
+  color: "white",
+  width: "300px"
 };
 
 const input = {
   width: "100%",
   padding: "10px",
-  borderRadius: "10px",
-  border: "none"
+  marginTop: "10px",
+  borderRadius: "10px"
 };
 
 const btn = {
-  width: "100%",
   marginTop: "10px",
+  width: "100%",
   padding: "10px",
   background: "#22c55e",
-  borderRadius: "10px",
-  border: "none",
-  color: "white"
+  borderRadius: "10px"
 };
 
-const rules = {
-  fontSize: "12px",
+const upi = {
   marginTop: "10px",
-  color: "#cbd5f5"
+  fontWeight: "bold"
 };
