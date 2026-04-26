@@ -1,11 +1,12 @@
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/router";
 import { auth, db } from "../../lib/firebase";
-import { onAuthStateChanged, signOut } from "firebase/auth";
+import { onAuthStateChanged } from "firebase/auth";
 import {
   collection,
   getDocs,
   updateDoc,
+  deleteDoc,
   doc
 } from "firebase/firestore";
 
@@ -16,12 +17,11 @@ export default function Admin() {
   const [editors, setEditors] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Load all data
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
 
-      const [paySnap, editorSnap] = await Promise.all([
+      const [paySnap, editSnap] = await Promise.all([
         getDocs(collection(db, "payments")),
         getDocs(collection(db, "editors"))
       ]);
@@ -34,20 +34,18 @@ export default function Admin() {
       );
 
       setEditors(
-        editorSnap.docs.map((d) => ({
+        editSnap.docs.map((d) => ({
           id: d.id,
           ...d.data()
         }))
       );
     } catch (err) {
-      console.error(err);
-      alert("Error loading admin data");
-    } finally {
-      setLoading(false);
+      console.log(err);
     }
+
+    setLoading(false);
   }, []);
 
-  // Auth check
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => {
       if (!user) {
@@ -55,7 +53,7 @@ export default function Admin() {
         return;
       }
 
-      if (user.email?.toLowerCase() !== "admin@editbridge.com") {
+      if (user.email !== "admin@editbridge.com") {
         router.push("/");
         return;
       }
@@ -66,7 +64,6 @@ export default function Admin() {
     return () => unsub();
   }, [router, loadData]);
 
-  // Payment actions
   const approvePayment = async (id) => {
     await updateDoc(doc(db, "payments", id), {
       status: "approved"
@@ -81,7 +78,6 @@ export default function Admin() {
     loadData();
   };
 
-  // Editor approve
   const approveEditor = async (id) => {
     await updateDoc(doc(db, "editors", id), {
       approved: true
@@ -89,149 +85,165 @@ export default function Admin() {
     loadData();
   };
 
-  const logoutNow = async () => {
-    await signOut(auth);
-    router.push("/login");
+  const toggleActive = async (id, current) => {
+    await updateDoc(doc(db, "editors", id), {
+      active: !current
+    });
+    loadData();
   };
 
-  if (loading) {
+  const deleteEditor = async (id) => {
+    const ok = confirm("Delete this editor?");
+    if (!ok) return;
+
+    await deleteDoc(doc(db, "editors", id));
+    loadData();
+  };
+
+  const openChat = (id) => {
+    router.push(`/chat/${id}`);
+  };
+
+  if (loading)
     return (
-      <div style={styles.loading}>
-        <h2>Loading Dashboard...</h2>
+      <div style={styles.loadingWrap}>
+        <h2 style={{ color: "white" }}>Loading Admin...</h2>
       </div>
     );
-  }
+
+  const approvedCount = editors.filter((e) => e.approved).length;
+  const pendingCount = editors.filter((e) => !e.approved).length;
+  const paymentPending = payments.filter(
+    (p) => p.status === "pending"
+  ).length;
 
   return (
     <div style={styles.page}>
-      <div style={styles.wrapper}>
-        {/* Header */}
-        <div style={styles.header}>
-          <div>
-            <p style={styles.tag}>OWNER PANEL</p>
-            <h1 style={styles.title}>Admin Dashboard</h1>
-            <p style={styles.sub}>
-              Manage payments, users & editors
-            </p>
-          </div>
+      <h1 style={styles.title}>Admin Dashboard</h1>
 
-          <button style={styles.logoutBtn} onClick={logoutNow}>
-            Logout
-          </button>
+      {/* Stats */}
+      <div style={styles.statsGrid}>
+        <div style={styles.statCard}>
+          <h3>{editors.length}</h3>
+          <p>Total Editors</p>
         </div>
 
-        {/* Stats */}
-        <div style={styles.grid}>
-          <div style={styles.card}>
-            <h2>{payments.length}</h2>
-            <p>Total Payments</p>
-          </div>
-
-          <div style={styles.card}>
-            <h2>
-              {payments.filter(
-                (p) => p.status === "pending"
-              ).length}
-            </h2>
-            <p>Pending Payments</p>
-          </div>
-
-          <div style={styles.card}>
-            <h2>{editors.length}</h2>
-            <p>Total Editors</p>
-          </div>
-
-          <div style={styles.card}>
-            <h2>
-              {
-                editors.filter(
-                  (e) => e.approved === true
-                ).length
-              }
-            </h2>
-            <p>Approved Editors</p>
-          </div>
+        <div style={styles.statCard}>
+          <h3>{approvedCount}</h3>
+          <p>Approved</p>
         </div>
 
-        {/* Payments */}
-        <div style={styles.section}>
-          <h2 style={styles.sectionTitle}>
-            Payment Requests
-          </h2>
+        <div style={styles.statCard}>
+          <h3>{pendingCount}</h3>
+          <p>Pending Editors</p>
+        </div>
 
-          {payments.length === 0 ? (
-            <p>No payments found.</p>
-          ) : (
-            payments.map((p) => (
-              <div key={p.id} style={styles.row}>
-                <div>
-                  <p style={styles.name}>{p.email}</p>
-                  <p style={styles.status}>
-                    Status: {p.status}
-                  </p>
-                </div>
+        <div style={styles.statCard}>
+          <h3>{paymentPending}</h3>
+          <p>Pending Payments</p>
+        </div>
+      </div>
 
-                {p.status === "pending" && (
-                  <div style={styles.flex}>
-                    <button
-                      style={styles.approve}
-                      onClick={() =>
-                        approvePayment(p.id)
-                      }
-                    >
-                      Approve
-                    </button>
+      {/* Payments */}
+      <section style={styles.section}>
+        <h2 style={styles.heading}>Payments</h2>
 
-                    <button
-                      style={styles.reject}
-                      onClick={() =>
-                        rejectPayment(p.id)
-                      }
-                    >
-                      Reject
-                    </button>
-                  </div>
-                )}
+        {payments.length === 0 ? (
+          <p style={styles.empty}>No Payments</p>
+        ) : (
+          payments.map((p) => (
+            <div key={p.id} style={styles.card}>
+              <div>
+                <p><b>{p.email}</b></p>
+                <p>Status: {p.status}</p>
+                <p>Txn: {p.txnId}</p>
               </div>
-            ))
-          )}
-        </div>
 
-        {/* Editors */}
-        <div style={styles.section}>
-          <h2 style={styles.sectionTitle}>
-            Editors
-          </h2>
+              {p.status === "pending" && (
+                <div style={styles.row}>
+                  <button
+                    style={styles.greenBtn}
+                    onClick={() => approvePayment(p.id)}
+                  >
+                    Approve
+                  </button>
 
-          {editors.length === 0 ? (
-            <p>No editors found.</p>
-          ) : (
-            editors.map((e) => (
-              <div key={e.id} style={styles.row}>
-                <div>
-                  <p style={styles.name}>{e.name}</p>
-                  <p style={styles.status}>
-                    {e.approved
-                      ? "Approved"
-                      : "Pending"}
-                  </p>
+                  <button
+                    style={styles.redBtn}
+                    onClick={() => rejectPayment(p.id)}
+                  >
+                    Reject
+                  </button>
                 </div>
+              )}
+            </div>
+          ))
+        )}
+      </section>
 
+      {/* Editors */}
+      <section style={styles.section}>
+        <h2 style={styles.heading}>Editors</h2>
+
+        {editors.length === 0 ? (
+          <p style={styles.empty}>No Editors</p>
+        ) : (
+          editors.map((e) => (
+            <div key={e.id} style={styles.card}>
+              <div>
+                <p><b>{e.name}</b></p>
+                <p>{e.email}</p>
+                <p>{e.skill}</p>
+                <p>{e.price}</p>
+
+                <p>
+                  Status:{" "}
+                  {e.approved ? "Approved" : "Pending"}
+                </p>
+
+                <p>
+                  Active:{" "}
+                  {e.active ? "Online" : "Offline"}
+                </p>
+              </div>
+
+              <div style={styles.rowWrap}>
                 {!e.approved && (
                   <button
-                    style={styles.approve}
-                    onClick={() =>
-                      approveEditor(e.id)
-                    }
+                    style={styles.greenBtn}
+                    onClick={() => approveEditor(e.id)}
                   >
                     Approve
                   </button>
                 )}
+
+                <button
+                  style={styles.blueBtn}
+                  onClick={() => openChat(e.id)}
+                >
+                  Chat
+                </button>
+
+                <button
+                  style={styles.purpleBtn}
+                  onClick={() =>
+                    toggleActive(e.id, e.active)
+                  }
+                >
+                  {e.active ? "Turn Off" : "Turn On"}
+                </button>
+
+                <button
+                  style={styles.redBtn}
+                  onClick={() => deleteEditor(e.id)}
+                >
+                  Delete
+                </button>
               </div>
-            ))
-          )}
-        </div>
-      </div>
+            </div>
+          ))
+        )}
+      </section>
     </div>
   );
 }
@@ -239,132 +251,107 @@ export default function Admin() {
 const styles = {
   page: {
     minHeight: "100vh",
+    padding: "30px",
     background:
-      "linear-gradient(135deg,#0f0c29,#302b63,#24243e)",
-    color: "white",
-    padding: "30px"
+      "linear-gradient(135deg,#0f172a,#1e1b4b,#581c87)",
+    color: "white"
   },
 
-  wrapper: {
-    maxWidth: "1150px",
-    margin: "auto"
-  },
-
-  loading: {
+  loadingWrap: {
     minHeight: "100vh",
     display: "flex",
     justifyContent: "center",
     alignItems: "center",
-    background: "#0f0c29",
-    color: "white"
-  },
-
-  header: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: "20px",
-    flexWrap: "wrap",
-    marginBottom: "30px"
-  },
-
-  tag: {
-    color: "#c4b5fd",
-    fontSize: "12px",
-    letterSpacing: "3px"
+    background:
+      "linear-gradient(135deg,#0f172a,#1e1b4b,#581c87)"
   },
 
   title: {
-    margin: "5px 0",
-    fontSize: "42px"
+    textAlign: "center",
+    fontSize: "38px",
+    marginBottom: "30px"
   },
 
-  sub: {
-    color: "#ddd"
-  },
-
-  logoutBtn: {
-    background:
-      "linear-gradient(90deg,#8b5cf6,#3b82f6)",
-    border: "none",
-    color: "white",
-    padding: "12px 18px",
-    borderRadius: "10px",
-    cursor: "pointer",
-    fontWeight: "bold"
-  },
-
-  grid: {
+  statsGrid: {
     display: "grid",
     gridTemplateColumns:
-      "repeat(auto-fit,minmax(220px,1fr))",
-    gap: "18px",
-    marginBottom: "30px"
+      "repeat(auto-fit,minmax(180px,1fr))",
+    gap: "15px",
+    marginBottom: "35px"
+  },
+
+  statCard: {
+    background: "rgba(255,255,255,0.08)",
+    padding: "20px",
+    borderRadius: "16px",
+    textAlign: "center"
+  },
+
+  section: {
+    marginTop: "30px"
+  },
+
+  heading: {
+    marginBottom: "15px"
+  },
+
+  empty: {
+    opacity: 0.7
   },
 
   card: {
     background: "rgba(255,255,255,0.08)",
-    padding: "22px",
-    borderRadius: "18px",
-    backdropFilter: "blur(8px)"
-  },
-
-  section: {
-    background: "rgba(255,255,255,0.08)",
-    padding: "22px",
-    borderRadius: "18px",
-    marginBottom: "20px"
-  },
-
-  sectionTitle: {
-    marginBottom: "18px"
+    padding: "18px",
+    borderRadius: "16px",
+    marginBottom: "15px"
   },
 
   row: {
     display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    flexWrap: "wrap",
     gap: "10px",
-    padding: "14px 0",
-    borderBottom:
-      "1px solid rgba(255,255,255,0.08)"
+    marginTop: "12px"
   },
 
-  name: {
-    margin: 0,
-    fontWeight: "bold"
-  },
-
-  status: {
-    margin: "4px 0 0",
-    color: "#ddd"
-  },
-
-  flex: {
+  rowWrap: {
     display: "flex",
-    gap: "10px"
+    gap: "10px",
+    flexWrap: "wrap",
+    marginTop: "12px"
   },
 
-  approve: {
-    background:
-      "linear-gradient(90deg,#7c3aed,#2563eb)",
-    border: "none",
-    color: "white",
+  greenBtn: {
     padding: "10px 14px",
-    borderRadius: "8px",
-    cursor: "pointer",
-    fontWeight: "bold"
+    border: "none",
+    borderRadius: "10px",
+    background: "#22c55e",
+    color: "white",
+    cursor: "pointer"
   },
 
-  reject: {
-    background:
-      "linear-gradient(90deg,#ef4444,#dc2626)",
-    border: "none",
-    color: "white",
+  redBtn: {
     padding: "10px 14px",
-    borderRadius: "8px",
-    cursor: "pointer",
-    fontWeight: "bold"
+    border: "none",
+    borderRadius: "10px",
+    background: "#ef4444",
+    color: "white",
+    cursor: "pointer"
+  },
+
+  blueBtn: {
+    padding: "10px 14px",
+    border: "none",
+    borderRadius: "10px",
+    background: "#2563eb",
+    color: "white",
+    cursor: "pointer"
+  },
+
+  purpleBtn: {
+    padding: "10px 14px",
+    border: "none",
+    borderRadius: "10px",
+    background: "#7c3aed",
+    color: "white",
+    cursor: "pointer"
   }
 };
