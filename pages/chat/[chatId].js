@@ -22,7 +22,7 @@ export default function Chat() {
 
   const bottomRef = useRef(null);
 
-  // Auth Check
+  // Auth check
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
       if (!u) {
@@ -35,7 +35,7 @@ export default function Chat() {
     return () => unsub();
   }, [router]);
 
-  // Load Messages
+  // Messages realtime
   useEffect(() => {
     if (!chatId) return;
 
@@ -46,12 +46,12 @@ export default function Chat() {
     );
 
     const unsub = onSnapshot(q, (snap) => {
-      const data = snap.docs.map((doc) => ({
+      const arr = snap.docs.map((doc) => ({
         id: doc.id,
         ...doc.data()
       }));
 
-      setMessages(data);
+      setMessages(arr);
       setLoading(false);
 
       setTimeout(() => {
@@ -64,7 +64,7 @@ export default function Chat() {
     return () => unsub();
   }, [chatId]);
 
-  // Send Message
+  // Send message
   const send = async (e) => {
     e.preventDefault();
 
@@ -81,43 +81,37 @@ export default function Chat() {
     setText("");
   };
 
-  if (!chatId) return <p style={{ padding: 20 }}>Loading chat...</p>;
+  if (!chatId) return <p style={{ padding: 20 }}>Loading...</p>;
 
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        background: "linear-gradient(135deg,#0f172a,#1e1b4b,#581c87)",
-        color: "white",
-        display: "flex",
-        flexDirection: "column"
-      }}
-    >
+    <div style={{
+      minHeight: "100vh",
+      display: "flex",
+      flexDirection: "column",
+      background: "linear-gradient(135deg,#0f172a,#1e1b4b,#581c87)",
+      color: "white"
+    }}>
+
       {/* Header */}
-      <div
-        style={{
-          padding: "18px",
-          fontSize: "22px",
-          fontWeight: "bold",
-          borderBottom: "1px solid rgba(255,255,255,0.1)",
-          backdropFilter: "blur(10px)"
-        }}
-      >
-        💬 Private Chat
+      <div style={{
+        padding: "18px",
+        fontSize: "22px",
+        fontWeight: "bold",
+        borderBottom: "1px solid rgba(255,255,255,0.1)"
+      }}>
+        💬 Live Chat
       </div>
 
       {/* Messages */}
-      <div
-        style={{
-          flex: 1,
-          padding: "20px",
-          overflowY: "auto"
-        }}
-      >
+      <div style={{
+        flex: 1,
+        overflowY: "auto",
+        padding: "20px"
+      }}>
         {loading ? (
-          <p>Loading messages...</p>
+          <p>Loading...</p>
         ) : messages.length === 0 ? (
-          <p>No messages yet.</p>
+          <p>No messages yet</p>
         ) : (
           messages.map((m) => {
             const mine = m.senderId === user?.uid;
@@ -131,28 +125,22 @@ export default function Chat() {
                   marginBottom: "12px"
                 }}
               >
-                <div
-                  style={{
-                    maxWidth: "75%",
-                    padding: "12px 16px",
-                    borderRadius: "18px",
-                    background: mine
-                      ? "linear-gradient(135deg,#7c3aed,#9333ea)"
-                      : "#1e293b",
-                    color: "white",
-                    boxShadow: "0 4px 12px rgba(0,0,0,0.25)"
-                  }}
-                >
-                  <div style={{ fontSize: "15px" }}>{m.text}</div>
+                <div style={{
+                  maxWidth: "75%",
+                  padding: "12px 16px",
+                  borderRadius: "18px",
+                  background: mine
+                    ? "linear-gradient(135deg,#7c3aed,#9333ea)"
+                    : "#1e293b"
+                }}>
+                  <div>{m.text}</div>
 
-                  <div
-                    style={{
-                      fontSize: "11px",
-                      opacity: 0.7,
-                      marginTop: "5px"
-                    }}
-                  >
-                    {mine ? "You" : "Other User"}
+                  <div style={{
+                    fontSize: "11px",
+                    marginTop: "5px",
+                    opacity: 0.7
+                  }}>
+                    {mine ? "You" : m.senderEmail}
                   </div>
                 </div>
               </div>
@@ -170,21 +158,19 @@ export default function Chat() {
           display: "flex",
           gap: "10px",
           padding: "15px",
-          borderTop: "1px solid rgba(255,255,255,0.1)",
-          background: "rgba(0,0,0,0.15)"
+          borderTop: "1px solid rgba(255,255,255,0.1)"
         }}
       >
         <input
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder="Type message..."
+          placeholder="Type your message..."
           style={{
             flex: 1,
             padding: "14px",
             borderRadius: "14px",
             border: "none",
-            outline: "none",
-            fontSize: "15px"
+            outline: "none"
           }}
         />
 
@@ -192,8 +178,8 @@ export default function Chat() {
           type="submit"
           style={{
             padding: "14px 20px",
-            borderRadius: "14px",
             border: "none",
+            borderRadius: "14px",
             background: "#7c3aed",
             color: "white",
             fontWeight: "bold",
