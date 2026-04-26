@@ -3,21 +3,37 @@ import Link from "next/link";
 export default function Home() {
   return (
     <div style={styles.page}>
-      <div style={styles.card}>
-        <h1 style={styles.title}>EditBridge</h1>
-        <p style={styles.text}>
-          Hire video editors or become one.
+      <div style={styles.overlay}></div>
+
+      <div style={styles.container}>
+        <h1 style={styles.title}>🎬 EditBridge</h1>
+        <p style={styles.subtitle}>
+          Connect Clients with Skilled Editors
         </p>
 
-        <div style={styles.row}>
-          <Link href="/login" style={styles.btn}>
-            Login
+        <div style={styles.card}>
+          <h2 style={styles.heading}>Choose Login Type</h2>
+
+          <Link href="/login" style={styles.clientBtn}>
+            👤 Client Login
           </Link>
 
-          <Link href="/editor-register" style={styles.btn2}>
-            Become Editor
+          <Link href="/editor-login" style={styles.editorBtn}>
+            🎥 Editor Login
+          </Link>
+
+          <Link href="/admin-login" style={styles.adminBtn}>
+            🛡️ Admin Login
+          </Link>
+
+          <Link href="/editor-register" style={styles.registerBtn}>
+            ✨ Become an Editor
           </Link>
         </div>
+
+        <p style={styles.footer}>
+          Our goal is helping students earn through editing skills.
+        </p>
       </div>
     </div>
   );
@@ -26,47 +42,81 @@ export default function Home() {
 const styles = {
   page: {
     minHeight: "100vh",
+    background:
+      "linear-gradient(135deg,#0f172a,#1e1b4b,#581c87,#312e81)",
     display: "flex",
     justifyContent: "center",
     alignItems: "center",
-    background: "linear-gradient(135deg,#0f172a,#312e81,#581c87)",
-    padding: "20px"
+    padding: "20px",
+    position: "relative",
+    overflow: "hidden"
   },
+
+  overlay: {
+    position: "absolute",
+    inset: 0,
+    background:
+      "radial-gradient(circle at top right, rgba(255,255,255,0.08), transparent 30%)"
+  },
+
+  container: {
+    position: "relative",
+    zIndex: 2,
+    textAlign: "center",
+    width: "100%",
+    maxWidth: "450px",
+    color: "white"
+  },
+
+  title: {
+    fontSize: "52px",
+    marginBottom: "10px",
+    fontWeight: "800"
+  },
+
+  subtitle: {
+    opacity: 0.85,
+    marginBottom: "30px",
+    fontSize: "18px"
+  },
+
   card: {
     background: "rgba(255,255,255,0.08)",
-    padding: "40px",
-    borderRadius: "20px",
-    color: "white",
-    textAlign: "center",
-    maxWidth: "500px",
-    width: "100%"
+    padding: "30px",
+    borderRadius: "22px",
+    backdropFilter: "blur(12px)",
+    boxShadow: "0 10px 30px rgba(0,0,0,0.25)"
   },
-  title: {
-    fontSize: "42px",
-    marginBottom: "10px"
+
+  heading: {
+    marginBottom: "20px",
+    fontSize: "24px"
   },
-  text: {
-    opacity: 0.9
-  },
-  row: {
-    display: "flex",
-    gap: "12px",
-    justifyContent: "center",
+
+  clientBtn: button("#06b6d4"),
+  editorBtn: button("#8b5cf6"),
+  adminBtn: button("#ef4444"),
+  registerBtn: button("#10b981"),
+
+  footer: {
     marginTop: "25px",
-    flexWrap: "wrap"
-  },
-  btn: {
-    padding: "12px 20px",
-    background: "#7c3aed",
-    color: "white",
-    borderRadius: "10px",
-    textDecoration: "none"
-  },
-  btn2: {
-    padding: "12px 20px",
-    background: "#2563eb",
-    color: "white",
-    borderRadius: "10px",
-    textDecoration: "none"
+    opacity: 0.75,
+    fontSize: "14px"
   }
 };
+
+function button(color) {
+  return {
+    display: "block",
+    width: "100%",
+    padding: "14px",
+    marginBottom: "14px",
+    borderRadius: "14px",
+    background: color,
+    color: "white",
+    textDecoration: "none",
+    fontWeight: "700",
+    fontSize: "16px",
+    transition: "0.2s"
+  };
+}
