@@ -1,5 +1,5 @@
 import { useRouter } from "next/router";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { auth, db } from "../../lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import {
@@ -11,7 +11,7 @@ import {
   onSnapshot
 } from "firebase/firestore";
 
-export default function Chat() {
+export default function ChatPage() {
   const router = useRouter();
   const { chatId } = router.query;
 
@@ -35,7 +35,7 @@ export default function Chat() {
     return () => unsub();
   }, [router]);
 
-  // Messages realtime
+  // Load messages
   useEffect(() => {
     if (!chatId) return;
 
@@ -46,12 +46,12 @@ export default function Chat() {
     );
 
     const unsub = onSnapshot(q, (snap) => {
-      const arr = snap.docs.map((doc) => ({
+      const data = snap.docs.map((doc) => ({
         id: doc.id,
         ...doc.data()
       }));
 
-      setMessages(arr);
+      setMessages(data);
       setLoading(false);
 
       setTimeout(() => {
@@ -81,67 +81,86 @@ export default function Chat() {
     setText("");
   };
 
-  if (!chatId) return <p style={{ padding: 20 }}>Loading...</p>;
+  const logoutBack = () => {
+    router.back();
+  };
+
+  const isLink = (msg) => {
+    return (
+      msg.includes("http://") ||
+      msg.includes("https://")
+    );
+  };
+
+  if (!chatId || !user) {
+    return (
+      <div style={styles.loading}>
+        Loading Chat...
+      </div>
+    );
+  }
 
   return (
-    <div style={{
-      minHeight: "100vh",
-      display: "flex",
-      flexDirection: "column",
-      background: "linear-gradient(135deg,#0f172a,#1e1b4b,#581c87)",
-      color: "white"
-    }}>
-
+    <div style={styles.page}>
       {/* Header */}
-      <div style={{
-        padding: "18px",
-        fontSize: "22px",
-        fontWeight: "bold",
-        borderBottom: "1px solid rgba(255,255,255,0.1)"
-      }}>
-        💬 Live Chat
+      <div style={styles.header}>
+        <button onClick={logoutBack} style={styles.backBtn}>
+          ← Back
+        </button>
+
+        <div>
+          <h2 style={{ margin: 0 }}>💬 Private Chat</h2>
+          <p style={styles.sub}>
+            Secure messaging + Drive links
+          </p>
+        </div>
       </div>
 
       {/* Messages */}
-      <div style={{
-        flex: 1,
-        overflowY: "auto",
-        padding: "20px"
-      }}>
+      <div style={styles.chatBox}>
         {loading ? (
-          <p>Loading...</p>
+          <p>Loading messages...</p>
         ) : messages.length === 0 ? (
-          <p>No messages yet</p>
+          <p>No messages yet.</p>
         ) : (
           messages.map((m) => {
-            const mine = m.senderId === user?.uid;
+            const mine = m.senderId === user.uid;
 
             return (
               <div
                 key={m.id}
                 style={{
                   display: "flex",
-                  justifyContent: mine ? "flex-end" : "flex-start",
+                  justifyContent: mine
+                    ? "flex-end"
+                    : "flex-start",
                   marginBottom: "12px"
                 }}
               >
-                <div style={{
-                  maxWidth: "75%",
-                  padding: "12px 16px",
-                  borderRadius: "18px",
-                  background: mine
-                    ? "linear-gradient(135deg,#7c3aed,#9333ea)"
-                    : "#1e293b"
-                }}>
-                  <div>{m.text}</div>
+                <div
+                  style={{
+                    ...styles.bubble,
+                    background: mine
+                      ? "linear-gradient(135deg,#7c3aed,#9333ea)"
+                      : "#1e293b"
+                  }}
+                >
+                  {isLink(m.text) ? (
+                    <a
+                      href={m.text}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={styles.link}
+                    >
+                      📎 Open Shared File
+                    </a>
+                  ) : (
+                    <div>{m.text}</div>
+                  )}
 
-                  <div style={{
-                    fontSize: "11px",
-                    marginTop: "5px",
-                    opacity: 0.7
-                  }}>
-                    {mine ? "You" : m.senderEmail}
-                  </div>
+                  <small style={styles.small}>
+                    {mine ? "You" : "Other User"}
+                  </small>
                 </div>
               </div>
             );
@@ -152,43 +171,113 @@ export default function Chat() {
       </div>
 
       {/* Input */}
-      <form
-        onSubmit={send}
-        style={{
-          display: "flex",
-          gap: "10px",
-          padding: "15px",
-          borderTop: "1px solid rgba(255,255,255,0.1)"
-        }}
-      >
+      <form onSubmit={send} style={styles.form}>
         <input
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder="Type your message..."
-          style={{
-            flex: 1,
-            padding: "14px",
-            borderRadius: "14px",
-            border: "none",
-            outline: "none"
-          }}
+          placeholder="Type message or paste Drive link..."
+          style={styles.input}
         />
 
-        <button
-          type="submit"
-          style={{
-            padding: "14px 20px",
-            border: "none",
-            borderRadius: "14px",
-            background: "#7c3aed",
-            color: "white",
-            fontWeight: "bold",
-            cursor: "pointer"
-          }}
-        >
+        <button type="submit" style={styles.sendBtn}>
           Send
         </button>
       </form>
     </div>
   );
 }
+
+const styles = {
+  page: {
+    minHeight: "100vh",
+    display: "flex",
+    flexDirection: "column",
+    background:
+      "linear-gradient(135deg,#0f172a,#1e1b4b,#581c87)",
+    color: "white"
+  },
+
+  loading: {
+    minHeight: "100vh",
+    display: "flex",
+    justifyContent: "center",
+    alignItems: "center",
+    background: "#0f172a",
+    color: "white"
+  },
+
+  header: {
+    padding: "16px 20px",
+    borderBottom: "1px solid rgba(255,255,255,0.1)",
+    display: "flex",
+    alignItems: "center",
+    gap: "15px"
+  },
+
+  sub: {
+    margin: 0,
+    fontSize: "13px",
+    color: "#cbd5e1"
+  },
+
+  backBtn: {
+    padding: "10px 14px",
+    borderRadius: "10px",
+    border: "none",
+    background: "#334155",
+    color: "white",
+    cursor: "pointer"
+  },
+
+  chatBox: {
+    flex: 1,
+    overflowY: "auto",
+    padding: "20px"
+  },
+
+  bubble: {
+    maxWidth: "75%",
+    padding: "12px 16px",
+    borderRadius: "18px",
+    boxShadow: "0 4px 14px rgba(0,0,0,0.25)"
+  },
+
+  small: {
+    display: "block",
+    marginTop: "8px",
+    opacity: 0.7,
+    fontSize: "11px"
+  },
+
+  link: {
+    color: "#67e8f9",
+    textDecoration: "underline",
+    fontWeight: "bold"
+  },
+
+  form: {
+    display: "flex",
+    gap: "10px",
+    padding: "16px",
+    borderTop: "1px solid rgba(255,255,255,0.1)"
+  },
+
+  input: {
+    flex: 1,
+    padding: "14px",
+    borderRadius: "14px",
+    border: "none",
+    outline: "none",
+    fontSize: "15px"
+  },
+
+  sendBtn: {
+    padding: "14px 20px",
+    borderRadius: "14px",
+    border: "none",
+    background: "#8b5cf6",
+    color: "white",
+    fontWeight: "bold",
+    cursor: "pointer"
+  }
+};
