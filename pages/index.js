@@ -1,20 +1,46 @@
 import { useEffect, useState } from "react";
-import { auth } from "../lib/firebase";
-import { onAuthStateChanged } from "firebase/auth";
+import { auth, db } from "../lib/firebase";
+import { onAuthStateChanged, signOut } from "firebase/auth";
 import { useRouter } from "next/router";
+import { doc, getDoc } from "firebase/firestore";
 
 export default function Home() {
   const [user, setUser] = useState(null);
+  const [role, setRole] = useState(null);
   const [loading, setLoading] = useState(true);
+
   const router = useRouter();
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (u) => {
+    const unsub = onAuthStateChanged(auth, async (u) => {
+      if (!u) {
+        setUser(null);
+        setLoading(false);
+        return;
+      }
+
       setUser(u);
+
+      try {
+        const snap = await getDoc(doc(db, "users", u.uid));
+
+        if (snap.exists()) {
+          setRole(snap.data().role);
+        }
+      } catch (err) {
+        console.log(err);
+      }
+
       setLoading(false);
     });
+
     return () => unsub();
   }, []);
+
+  const logout = async () => {
+    await signOut(auth);
+    location.reload();
+  };
 
   if (loading) return <div style={s.loader}>Loading...</div>;
 
@@ -39,9 +65,20 @@ export default function Home() {
             </button>
           </div>
         ) : (
-          <button onClick={() => router.push("/client")} style={s.btnPrimary}>
-            Dashboard
-          </button>
+          <div style={s.navBtns}>
+            <button
+              onClick={() =>
+                router.push(role === "editor" ? "/editor" : "/client")
+              }
+              style={s.btnPrimary}
+            >
+              Dashboard
+            </button>
+
+            <button onClick={logout} style={s.adminBtn}>
+              Logout
+            </button>
+          </div>
         )}
       </div>
 
@@ -56,7 +93,9 @@ export default function Home() {
         </p>
 
         <button
-          onClick={() => router.push(user ? "/client" : "/login")}
+          onClick={() =>
+            router.push(user ? (role === "editor" ? "/editor" : "/client") : "/login")
+          }
           style={s.cta}
         >
           🚀 Get Started
