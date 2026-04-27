@@ -1,0 +1,20 @@
+import { useRouter } from "next/router";
+
+export default function Chat() {
+  const router = useRouter();
+  const { id } = router.query;
+
+  if (!id) return <div>Loading chat...</div>;
+
+  return (
+    <div style={{
+      minHeight: "100vh",
+      background: "#020617",
+      color: "white",
+      padding: 20
+    }}>
+      <h1>💬 Chat Room</h1>
+      <p>Chat ID: {id}</p>
+    </div>
+  );
+}
