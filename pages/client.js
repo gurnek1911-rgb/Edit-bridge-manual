@@ -1,40 +1,79 @@
 import { useEffect, useState } from "react";
-import { db } from "../lib/firebase";
+import { db, auth } from "../lib/firebase";
 import { collection, getDocs } from "firebase/firestore";
+import { onAuthStateChanged } from "firebase/auth";
 import { useRouter } from "next/router";
 
 export default function Client() {
   const [editors, setEditors] = useState([]);
+  const [loading, setLoading] = useState(true);
   const router = useRouter();
 
+  // ✅ FIX: Added auth check — no more stuck unauthenticated landing
   useEffect(() => {
-    loadEditors();
+    const unsub = onAuthStateChanged(auth, async (u) => {
+      if (!u) {
+        router.replace("/login?type=client");
+        return;
+      }
+
+      try {
+        const snap = await getDocs(collection(db, "editors"));
+        const list = snap.docs
+          .map((doc) => ({ id: doc.id, ...doc.data() }))
+          .filter((e) => e.approved && e.active); // Only show approved + active editors
+        setEditors(list);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    });
+
+    return () => unsub();
   }, []);
 
-  const loadEditors = async () => {
-    const snap = await getDocs(collection(db, "editors"));
-    const list = snap.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    }));
-    setEditors(list);
-  };
+  if (loading) {
+    return (
+      <div style={s.centerPage}>
+        <div style={s.spinner}></div>
+      </div>
+    );
+  }
 
   return (
     <div style={s.page}>
-      <h1>🔥 Editors</h1>
+      {/* HEADER */}
+      <div style={s.header}>
+        <h1 style={s.heading}>🔥 Find an Editor</h1>
+        <button
+          style={s.logoutBtn}
+          onClick={() => {
+            auth.signOut();
+            router.replace("/");
+          }}
+        >
+          Logout
+        </button>
+      </div>
 
-      {editors.map(e => (
+      {editors.length === 0 && (
+        <p style={s.empty}>No editors available right now.</p>
+      )}
+
+      {editors.map((e) => (
         <div key={e.id} style={s.card}>
-          <h2>{e.name}</h2>
-          <p>{e.skills?.join(", ")}</p>
-          <p>₹{e.price}</p>
+          <div>
+            <h2 style={s.name}>{e.name}</h2>
+            <p style={s.detail}>{e.skills?.join(", ")}</p>
+            <p style={s.price}>₹{e.price}</p>
+          </div>
 
           <button
-            style={s.btn}
+            style={s.chatBtn}
             onClick={() => router.push(`/chat/${e.id}`)}
           >
-            Chat (🔒 ₹10)
+            💬 Chat (🔒 ₹10)
           </button>
         </div>
       ))}
@@ -45,21 +84,63 @@ export default function Client() {
 const s = {
   page: {
     padding: 20,
-    background: "#020617",
+    background: "linear-gradient(135deg,#020617,#0f172a,#1e1b4b)",
     color: "white",
-    minHeight: "100vh"
+    minHeight: "100vh",
+  },
+  centerPage: {
+    minHeight: "100vh",
+    display: "flex",
+    justifyContent: "center",
+    alignItems: "center",
+    background: "#020617",
+  },
+  spinner: {
+    width: 40,
+    height: 40,
+    border: "4px solid #333",
+    borderTop: "4px solid #8b5cf6",
+    borderRadius: "50%",
+    animation: "spin 1s linear infinite",
+  },
+  header: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 20,
+  },
+  heading: { fontSize: 22, fontWeight: 800, margin: 0 },
+  logoutBtn: {
+    background: "#ef4444",
+    color: "white",
+    border: "none",
+    padding: "8px 16px",
+    borderRadius: 8,
+    cursor: "pointer",
   },
   card: {
-    background: "#111827",
+    background: "#1e293b",
     padding: 20,
     borderRadius: 12,
-    marginTop: 10
+    marginBottom: 12,
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 12,
   },
-  btn: {
-    marginTop: 10,
-    padding: 10,
+  name: { fontSize: 18, fontWeight: 700, margin: "0 0 4px 0" },
+  detail: { color: "#94a3b8", fontSize: 13, margin: "0 0 4px 0" },
+  price: { color: "#a78bfa", fontWeight: 600, margin: 0 },
+  chatBtn: {
+    padding: "10px 16px",
     background: "#6366f1",
     color: "white",
-    border: "none"
-  }
+    border: "none",
+    borderRadius: 10,
+    cursor: "pointer",
+    fontWeight: 600,
+    fontSize: 13,
+  },
+  empty: { color: "#94a3b8", textAlign: "center", marginTop: 40 },
 };
