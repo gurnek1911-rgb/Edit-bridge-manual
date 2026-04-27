@@ -1,20 +1,293 @@
+import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/router";
+import { auth, db } from "../../lib/firebase";
+import { onAuthStateChanged } from "firebase/auth";
+import {
+  doc,
+  getDoc,
+  setDoc,
+  collection,
+  addDoc,
+  onSnapshot,
+  query,
+  orderBy,
+  serverTimestamp,
+} from "firebase/firestore";
 
-export default function Chat() {
+export default function ChatPage() {
   const router = useRouter();
   const { id } = router.query;
 
-  if (!id) return <div>Loading chat...</div>;
+  const [user, setUser] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [text, setText] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const bottomRef = useRef(null);
+
+  // 鉁� FIX: Store snapshot unsubscriber in a ref so it can be cleaned up properly
+  const msgUnsubRef = useRef(null);
+
+  useEffect(() => {
+    if (!id) return;
+
+    const authUnsub = onAuthStateChanged(auth, async (u) => {
+      if (!u) {
+        router.replace("/login");
+        return;
+      }
+
+      setUser(u);
+
+      try {
+        // 馃敀 CHECK PAYMENT ACCESS
+        const accessSnap = await getDoc(doc(db, "clientAccess", u.uid));
+
+        if (!accessSnap.exists() || accessSnap.data().status !== "approved") {
+          setError("馃敀 Pay 鈧�10 to unlock chat. Redirecting...");
+          setTimeout(() => router.replace("/client"), 2000);
+          return;
+        }
+
+        // 鉁� CREATE CHAT DOC IF NOT EXISTS
+        const chatRef = doc(db, "chats", id);
+        const chatSnap = await getDoc(chatRef);
+
+        if (!chatSnap.exists()) {
+          const users = id.split("_");
+          await setDoc(chatRef, {
+            users,
+            createdAt: serverTimestamp(),
+            lastMessage: "",
+            lastUpdated: serverTimestamp(),
+          });
+        }
+
+        // 馃敟 REALTIME MESSAGES 鈥� 鉁� FIX: store unsubscribe in ref
+        const q = query(
+          collection(db, "chats", id, "messages"),
+          orderBy("createdAt", "asc")
+        );
+
+        // Clean up any previous snapshot listener before creating new one
+        if (msgUnsubRef.current) msgUnsubRef.current();
+
+        msgUnsubRef.current = onSnapshot(q, (snap) => {
+          setMessages(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+          setLoading(false);
+        });
+      } catch (err) {
+        console.error(err);
+        setError("Something went wrong. Please go back and try again.");
+        setLoading(false);
+      }
+    });
+
+    return () => {
+      authUnsub();
+      // 鉁� FIX: Clean up snapshot on unmount
+      if (msgUnsubRef.current) msgUnsubRef.current();
+    };
+  }, [id]);
+
+  // Auto-scroll to bottom when messages arrive
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  const sendMessage = async () => {
+    if (!text.trim() || !user) return;
+
+    const msg = text;
+    setText(""); // Clear immediately for snappy UX
+
+    try {
+      await addDoc(collection(db, "chats", id, "messages"), {
+        text: msg,
+        sender: user.uid,
+        createdAt: serverTimestamp(),
+      });
+
+      await setDoc(
+        doc(db, "chats", id),
+        { lastMessage: msg, lastUpdated: serverTimestamp() },
+        { merge: true }
+      );
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  };
+
+  if (error) {
+    return (
+      <div style={s.centerPage}>
+        <div style={s.errorCard}>
+          <p>{error}</p>
+          <button style={s.backBtn} onClick={() => router.replace("/client")}>
+            鈫� Go Back
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (loading) {
+    return (
+      <div style={s.centerPage}>
+        <div style={s.loader}></div>
+      </div>
+    );
+  }
 
   return (
-    <div style={{
-      minHeight: "100vh",
-      background: "#020617",
-      color: "white",
-      padding: 20
-    }}>
-      <h1>💬 Chat Room</h1>
-      <p>Chat ID: {id}</p>
+    <div style={s.page}>
+      {/* HEADER */}
+      <div style={s.header}>
+        <button onClick={() => router.back()} style={s.back}>
+          鈫�
+        </button>
+        <h2 style={s.headerTitle}>馃挰 Chat</h2>
+      </div>
+
+      {/* MESSAGES */}
+      <div style={s.chatBox}>
+        {messages.length === 0 && (
+          <p style={s.emptyMsg}>No messages yet. Say hi! 馃憢</p>
+        )}
+        {messages.map((m) => (
+          <div
+            key={m.id}
+            style={{
+              ...s.msg,
+              alignSelf: m.sender === user?.uid ? "flex-end" : "flex-start",
+              background: m.sender === user?.uid ? "#7c3aed" : "#1e293b",
+            }}
+          >
+            {m.text}
+          </div>
+        ))}
+        <div ref={bottomRef} />
+      </div>
+
+      {/* INPUT */}
+      <div style={s.inputRow}>
+        <input
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder="Type message... (Enter to send)"
+          style={s.input}
+        />
+        <button onClick={sendMessage} style={s.send}>
+          Send
+        </button>
+      </div>
     </div>
   );
 }
+
+const s = {
+  page: {
+    minHeight: "100vh",
+    display: "flex",
+    flexDirection: "column",
+    background: "linear-gradient(135deg,#020617,#0f172a,#1e1b4b)",
+    color: "white",
+  },
+  centerPage: {
+    minHeight: "100vh",
+    display: "flex",
+    justifyContent: "center",
+    alignItems: "center",
+    background: "#020617",
+    color: "white",
+  },
+  errorCard: {
+    background: "#1e293b",
+    padding: 30,
+    borderRadius: 12,
+    textAlign: "center",
+    maxWidth: 340,
+  },
+  backBtn: {
+    marginTop: 16,
+    padding: "10px 20px",
+    background: "#6366f1",
+    color: "white",
+    border: "none",
+    borderRadius: 10,
+    cursor: "pointer",
+  },
+  header: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    padding: 15,
+    borderBottom: "1px solid rgba(255,255,255,0.1)",
+  },
+  headerTitle: { margin: 0, fontSize: 16, fontWeight: 700 },
+  back: {
+    background: "none",
+    border: "none",
+    color: "white",
+    fontSize: 22,
+    cursor: "pointer",
+    padding: "4px 8px",
+  },
+  chatBox: {
+    flex: 1,
+    display: "flex",
+    flexDirection: "column",
+    gap: 10,
+    padding: 15,
+    overflowY: "auto",
+  },
+  emptyMsg: { color: "#64748b", textAlign: "center", marginTop: 40 },
+  msg: {
+    padding: "10px 14px",
+    borderRadius: 12,
+    maxWidth: "70%",
+    fontSize: 14,
+    wordBreak: "break-word",
+  },
+  inputRow: {
+    display: "flex",
+    padding: 10,
+    gap: 8,
+    borderTop: "1px solid rgba(255,255,255,0.1)",
+  },
+  input: {
+    flex: 1,
+    padding: 10,
+    borderRadius: 10,
+    border: "1px solid #334155",
+    outline: "none",
+    background: "#1e293b",
+    color: "white",
+    fontSize: 14,
+  },
+  send: {
+    padding: "10px 16px",
+    background: "#7c3aed",
+    border: "none",
+    color: "white",
+    borderRadius: 10,
+    cursor: "pointer",
+    fontWeight: 600,
+  },
+  loader: {
+    width: 30,
+    height: 30,
+    border: "3px solid #333",
+    borderTop: "3px solid #7c3aed",
+    borderRadius: "50%",
+    animation: "spin 1s linear infinite",
+  },
+};
