@@ -7,6 +7,7 @@ import {
   deleteDoc,
   doc,
   getDoc,
+  setDoc,
   serverTimestamp,
   query,
   orderBy,
@@ -17,62 +18,26 @@ import { useRouter } from "next/router";
 export default function Chat() {
   const [msgs, setMsgs] = useState([]);
   const [text, setText] = useState("");
-  const [currentUser, setCurrentUser] = useState(null);
-  const [role, setRole] = useState(null);
-  const [accessOk, setAccessOk] = useState(false);
+  const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const router = useRouter();
   const { chatId } = router.query;
   const bottomRef = useRef();
 
-  // AUTH + ROLE
+  // AUTH
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (u) => {
+    const unsub = onAuthStateChanged(auth, (u) => {
       if (!u) return router.push("/login");
-
-      setCurrentUser(u);
-
-      if (u.email === "admin@editbridge.com") {
-        setRole("admin");
-        setAccessOk(true);
-        setLoading(false);
-        return;
-      }
-
-      const editorSnap = await getDoc(doc(db, "editors", u.uid));
-      if (editorSnap.exists()) {
-        setRole("editor");
-        setAccessOk(true);
-        setLoading(false);
-        return;
-      }
-
-      setRole("client");
+      setUser(u);
+      setLoading(false);
     });
-
     return () => unsub();
   }, []);
 
-  // CLIENT ACCESS CHECK
+  // LOAD MESSAGES REALTIME
   useEffect(() => {
-    if (role !== "client" || !currentUser || !chatId) return;
-
-    (async () => {
-      const snap = await getDoc(doc(db, "clientAccess", currentUser.uid));
-      if (snap.exists() && snap.data().status === "approved") {
-        setAccessOk(true);
-      } else {
-        alert("⏳ Payment not approved yet");
-        router.push("/");
-      }
-      setLoading(false);
-    })();
-  }, [role, currentUser, chatId]);
-
-  // LOAD MESSAGES
-  useEffect(() => {
-    if (!chatId || !accessOk) return;
+    if (!chatId) return;
 
     const q = query(
       collection(db, "chats", chatId, "messages"),
@@ -82,22 +47,38 @@ export default function Chat() {
     return onSnapshot(q, (snap) => {
       setMsgs(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
     });
-  }, [chatId, accessOk]);
+  }, [chatId]);
 
   // AUTO SCROLL
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [msgs]);
 
+  // SEND MESSAGE (🔥 IMPORTANT FIX)
   const send = async () => {
     if (!text.trim()) return;
 
-    await addDoc(collection(db, "chats", chatId, "messages"), {
+    const messageData = {
       text: text.trim(),
-      user: currentUser.email,
-      uid: currentUser.uid,
+      uid: user.uid,
+      user: user.email,
       createdAt: serverTimestamp(),
-    });
+    };
+
+    // 1. Add message
+    await addDoc(collection(db, "chats", chatId, "messages"), messageData);
+
+    // 2. UPDATE CHAT DOC (THIS FIXES INBOX + LAST MESSAGE)
+    await setDoc(
+      doc(db, "chats", chatId),
+      {
+        lastMessage: text.trim(),
+        lastMessageAt: serverTimestamp(),
+        lastSender: user.email,
+        participants: chatId.split("_"),
+      },
+      { merge: true }
+    );
 
     setText("");
   };
@@ -106,36 +87,17 @@ export default function Chat() {
     await deleteDoc(doc(db, "chats", chatId, "messages", id));
   };
 
-  const clear = async () => {
-    if (!confirm("Clear all messages?")) return;
-    msgs.forEach((m) => del(m.id));
-  };
+  if (loading) return <div style={{ padding: 20 }}>Loading...</div>;
 
-  if (loading) {
-    return (
-      <div style={s.center}>
-        <div style={s.loader}></div>
-      </div>
-    );
-  }
-
-  if (!accessOk) return null;
-
-  const isMe = (m) => m.uid === currentUser.uid;
+  const isMe = (m) => m.uid === user.uid;
 
   return (
     <div style={s.page}>
-      {/* HEADER */}
       <div style={s.header}>
         <button onClick={() => router.back()} style={s.back}>←</button>
-        <div>
-          <div style={s.title}>Deal Chat</div>
-          <div style={s.sub}>{msgs.length} messages</div>
-        </div>
-        <button onClick={clear} style={s.clear}>Clear</button>
+        <div>Chat</div>
       </div>
 
-      {/* CHAT */}
       <div style={s.chat}>
         {msgs.map((m) => (
           <div
@@ -145,37 +107,20 @@ export default function Chat() {
               justifyContent: isMe(m) ? "flex-end" : "flex-start",
             }}
           >
-            <div
-              style={{
-                ...s.bubble,
-                background: isMe(m)
-                  ? "linear-gradient(135deg,#7c3aed,#4f46e5)"
-                  : "rgba(255,255,255,0.05)",
-              }}
-            >
-              {!isMe(m) && (
-                <div style={s.sender}>{m.user}</div>
-              )}
-
+            <div style={{
+              ...s.bubble,
+              background: isMe(m) ? "#7c3aed" : "#1e293b",
+            }}>
+              {!isMe(m) && <div style={s.sender}>{m.user}</div>}
               {m.text}
-
-              <div style={s.time}>
-                {m.createdAt?.toDate?.().toLocaleTimeString([], {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })}
-              </div>
             </div>
 
-            <button onClick={() => del(m.id)} style={s.delete}>
-              ×
-            </button>
+            <button onClick={() => del(m.id)} style={s.delete}>×</button>
           </div>
         ))}
         <div ref={bottomRef} />
       </div>
 
-      {/* INPUT */}
       <div style={s.inputWrap}>
         <input
           value={text}
@@ -184,114 +129,22 @@ export default function Chat() {
           style={s.input}
           onKeyDown={(e) => e.key === "Enter" && send()}
         />
-        <button onClick={send} style={s.send}>
-          ➤
-        </button>
+        <button onClick={send} style={s.send}>Send</button>
       </div>
     </div>
   );
 }
 
 const s = {
-  page: {
-    height: "100vh",
-    display: "flex",
-    flexDirection: "column",
-    background: "linear-gradient(135deg,#020617,#0f172a,#1e1b4b)",
-    color: "white",
-  },
-
-  header: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    padding: "12px 16px",
-    backdropFilter: "blur(10px)",
-    background: "rgba(0,0,0,0.4)",
-    borderBottom: "1px solid rgba(255,255,255,0.08)",
-  },
-
-  title: { fontWeight: 700 },
-  sub: { fontSize: 11, color: "#64748b" },
-
-  back: { background: "none", border: "none", color: "white", fontSize: 18 },
-  clear: { fontSize: 12, color: "#ef4444", background: "none", border: "none" },
-
-  chat: {
-    flex: 1,
-    overflowY: "auto",
-    padding: 16,
-    display: "flex",
-    flexDirection: "column",
-    gap: 10,
-  },
-
-  row: { display: "flex", alignItems: "flex-end", gap: 6 },
-
-  bubble: {
-    padding: "10px 14px",
-    borderRadius: 16,
-    maxWidth: "70%",
-    fontSize: 14,
-  },
-
-  sender: {
-    fontSize: 10,
-    color: "#94a3b8",
-    marginBottom: 4,
-  },
-
-  time: {
-    fontSize: 9,
-    opacity: 0.6,
-    marginTop: 4,
-    textAlign: "right",
-  },
-
-  delete: {
-    background: "none",
-    border: "none",
-    color: "#334155",
-    fontSize: 12,
-  },
-
-  inputWrap: {
-    display: "flex",
-    padding: 12,
-    borderTop: "1px solid rgba(255,255,255,0.08)",
-  },
-
-  input: {
-    flex: 1,
-    padding: 12,
-    borderRadius: 12,
-    border: "none",
-    background: "rgba(255,255,255,0.05)",
-    color: "white",
-  },
-
-  send: {
-    marginLeft: 8,
-    padding: "12px 16px",
-    borderRadius: 12,
-    border: "none",
-    background: "linear-gradient(135deg,#7c3aed,#4f46e5)",
-    color: "white",
-  },
-
-  center: {
-    height: "100vh",
-    display: "flex",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-
-  loader: {
-    width: 30,
-    height: 30,
-    border: "3px solid rgba(255,255,255,0.1)",
-    borderTop: "3px solid #7c3aed",
-    borderRadius: "50%",
-    animation: "spin 1s linear infinite",
-  },
+  page: { height: "100vh", display: "flex", flexDirection: "column", background: "#020617", color: "white" },
+  header: { padding: 12, borderBottom: "1px solid #222", display: "flex", gap: 10 },
+  back: { background: "none", border: "none", color: "white" },
+  chat: { flex: 1, overflowY: "auto", padding: 12, display: "flex", flexDirection: "column", gap: 10 },
+  row: { display: "flex", gap: 6 },
+  bubble: { padding: 10, borderRadius: 12, maxWidth: "70%" },
+  sender: { fontSize: 10, opacity: 0.6 },
+  delete: { background: "none", border: "none", color: "#555" },
+  inputWrap: { display: "flex", padding: 10, borderTop: "1px solid #222" },
+  input: { flex: 1, padding: 10, borderRadius: 10, border: "none", background: "#111", color: "white" },
+  send: { marginLeft: 6, padding: "10px 14px", background: "#7c3aed", border: "none", color: "white", borderRadius: 10 },
 };
