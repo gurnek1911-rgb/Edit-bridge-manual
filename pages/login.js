@@ -16,38 +16,45 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
+  // 🔥 safer role detection
   const role = type === "editor" ? "editor" : "client";
 
-  // ✅ LOGIN
+  // ================= LOGIN =================
   const login = async () => {
     if (!email || !password) return alert("Enter all fields");
 
     setLoading(true);
 
     try {
-      const userCred = await signInWithEmailAndPassword(auth, email, password);
-      const uid = userCred.user.uid;
+      const res = await signInWithEmailAndPassword(auth, email, password);
+      const uid = res.user.uid;
 
-      if (role === "editor") {
-        const snap = await getDoc(doc(db, "editors", uid));
+      // 🔥 check EDITOR first
+      const editorSnap = await getDoc(doc(db, "editors", uid));
 
-        if (!snap.exists()) {
-          alert("Editor profile not found. Create account first.");
+      if (editorSnap.exists()) {
+        const data = editorSnap.data();
+
+        if (!data.approved) {
+          alert("⏳ Waiting for admin approval");
           setLoading(false);
           return;
         }
 
-        if (!snap.data().approved) {
-          alert("Waiting for admin approval");
-          setLoading(false);
-          return;
-        }
-
-        router.push("/editor");
-      } else {
-        router.push("/client");
+        router.replace("/editor");
+        return;
       }
 
+      // 🔥 else check CLIENT
+      const userSnap = await getDoc(doc(db, "users", uid));
+
+      if (userSnap.exists()) {
+        router.replace("/client");
+        return;
+      }
+
+      // ❌ no role found
+      alert("Account not found properly");
     } catch (err) {
       alert(err.message);
     }
@@ -55,30 +62,30 @@ export default function Login() {
     setLoading(false);
   };
 
-  // ✅ SIGNUP
+  // ================= SIGNUP =================
   const signup = async () => {
     if (!email || !password) return alert("Enter all fields");
 
     setLoading(true);
 
     try {
-      const userCred = await createUserWithEmailAndPassword(auth, email, password);
-      const uid = userCred.user.uid;
+      const res = await createUserWithEmailAndPassword(auth, email, password);
+      const uid = res.user.uid;
 
       if (role === "editor") {
-        // 🔥 CREATE EDITOR DOC (IMPORTANT)
+        // 🔥 CREATE EDITOR PROFILE (IMPORTANT)
         await setDoc(doc(db, "editors", uid), {
           email,
           name: "New Editor",
           skills: [],
+          portfolio: [],
           price: 0,
           approved: false,
           active: false,
           createdAt: new Date()
         });
 
-        alert("Editor account created. Wait for admin approval.");
-
+        alert("✅ Editor account created. Wait for admin approval.");
       } else {
         await setDoc(doc(db, "users", uid), {
           email,
@@ -86,9 +93,8 @@ export default function Login() {
           createdAt: new Date()
         });
 
-        router.push("/client");
+        router.replace("/client");
       }
-
     } catch (err) {
       alert(err.message);
     }
@@ -142,6 +148,7 @@ export default function Login() {
   );
 }
 
+// ================= UI =================
 const s = {
   page: {
     minHeight: "100vh",
