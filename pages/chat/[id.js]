@@ -1,111 +1,77 @@
-import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
-import { auth, db } from "../../lib/firebase";
+import { db, auth } from "../../lib/firebase";
 import {
+  doc,
+  getDoc,
   collection,
   addDoc,
-  query,
-  orderBy,
   onSnapshot,
-  serverTimestamp,
-  where,
-  getDocs
+  query,
+  orderBy
 } from "firebase/firestore";
+import { useRouter } from "next/router";
 
-export default function ChatPage() {
+export default function Chat() {
   const router = useRouter();
   const { id } = router.query;
 
   const [messages, setMessages] = useState([]);
-  const [text, setText] = useState("");
+  const [msg, setMsg] = useState("");
   const [allowed, setAllowed] = useState(false);
 
-  // 🔒 CHECK PAYMENT
   useEffect(() => {
-    if (!id || !auth.currentUser) return;
+    if (!id) return;
 
-    const check = async () => {
-      const q = query(
-        collection(db, "payments"),
-        where("chatId", "==", id),
-        where("clientId", "==", auth.currentUser.uid),
-        where("status", "==", "approved")
-      );
+    const checkAccess = async () => {
+      const snap = await getDoc(doc(db, "paymentRequests", id));
 
-      const snap = await getDocs(q);
-
-      if (snap.empty) {
-        router.replace(`/payment/${id}`);
-      } else {
+      if (snap.exists() && snap.data().status === "approved") {
         setAllowed(true);
       }
     };
 
-    check();
+    checkAccess();
+
+    const q = query(collection(db, "chats", id, "messages"), orderBy("createdAt"));
+
+    return onSnapshot(q, (snap) => {
+      setMessages(snap.docs.map(d => d.data()));
+    });
+
   }, [id]);
 
-  // 💬 REAL TIME MESSAGES
-  useEffect(() => {
-    if (!id || !allowed) return;
-
-    const q = query(
-      collection(db, "chats", id, "messages"),
-      orderBy("createdAt", "asc")
-    );
-
-    const unsub = onSnapshot(q, (snap) => {
-      setMessages(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    });
-
-    return () => unsub();
-  }, [id, allowed]);
-
-  const sendMessage = async () => {
-    if (!text.trim()) return;
+  const send = async () => {
+    if (!msg) return;
 
     await addDoc(collection(db, "chats", id, "messages"), {
-      text,
-      senderId: auth.currentUser.uid,
-      createdAt: serverTimestamp()
+      text: msg,
+      uid: auth.currentUser.uid,
+      createdAt: new Date()
     });
 
-    setText("");
+    setMsg("");
   };
 
-  if (!allowed) return <div style={{color:"white"}}>Checking payment...</div>;
+  if (!allowed) {
+    return <div style={{ color: "white" }}>🔒 Chat Locked</div>;
+  }
 
   return (
     <div style={s.page}>
       <div style={s.chat}>
-        {messages.map(m => (
-          <div
-            key={m.id}
-            style={{
-              ...s.msg,
-              alignSelf:
-                m.senderId === auth.currentUser.uid
-                  ? "flex-end"
-                  : "flex-start"
-            }}
-          >
-            {m.text}
-          </div>
+        {messages.map((m, i) => (
+          <p key={i}>{m.text}</p>
         ))}
       </div>
 
-      <div style={s.inputBox}>
-        <input value={text} onChange={(e)=>setText(e.target.value)} style={s.input}/>
-        <button onClick={sendMessage} style={s.btn}>Send</button>
-      </div>
+      <input value={msg} onChange={(e)=>setMsg(e.target.value)} style={s.input}/>
+      <button onClick={send}>Send</button>
     </div>
   );
 }
 
 const s = {
-  page:{height:"100vh",display:"flex",flexDirection:"column",background:"#020617",color:"white"},
-  chat:{flex:1,padding:10,display:"flex",flexDirection:"column"},
-  msg:{padding:10,background:"#7c3aed",marginTop:8,borderRadius:10,maxWidth:"70%"},
-  inputBox:{display:"flex",padding:10},
-  input:{flex:1,padding:10},
-  btn:{padding:10,background:"#22c55e",border:"none"}
+  page: { padding: 20, background: "#020617", minHeight: "100vh", color: "white" },
+  chat: { height: 400, overflow: "auto" },
+  input: { width: "100%", padding: 10 }
 };
