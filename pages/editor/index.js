@@ -5,39 +5,100 @@ import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { useRouter } from "next/router";
 
 export default function Editor() {
-  const [editor,setEditor]=useState(null);
-  const router=useRouter();
+  const router = useRouter();
 
-  useEffect(()=>{
-    onAuthStateChanged(auth, async(u)=>{
-      if(!u) return router.push("/login?type=editor");
+  const [editor, setEditor] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [portfolio, setPortfolio] = useState("");
 
-      const snap=await getDoc(doc(db,"editors",u.uid));
-      if(!snap.exists()) return router.push("/");
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, async (u) => {
+      if (!u) return router.replace("/login?type=editor");
 
-      setEditor({id:u.uid,...snap.data()});
+      const snap = await getDoc(doc(db, "editors", u.uid));
+
+      if (!snap.exists()) {
+        alert("Editor not found");
+        return router.replace("/");
+      }
+
+      const data = snap.data();
+
+      if (!data.approved) {
+        alert("Wait for admin approval");
+        return router.replace("/");
+      }
+
+      setEditor({ uid: u.uid, ...data });
+      setPortfolio(data.portfolio || "");
+      setLoading(false);
     });
-  },[]);
 
-  const save=async()=>{
-    await updateDoc(doc(db,"editors",editor.id),editor);
-    alert("saved");
+    return () => unsub();
+  }, []);
+
+  const savePortfolio = async () => {
+    await updateDoc(doc(db, "editors", editor.uid), {
+      portfolio
+    });
+
+    alert("Portfolio Updated ✅");
   };
 
-  if(!editor) return <div>Loading...</div>;
+  const logout = async () => {
+    await signOut(auth);
+    router.push("/");
+  };
+
+  if (loading) return <div style={s.center}>Loading...</div>;
 
   return (
-    <div style={{color:"white",padding:20}}>
-      <h1>Editor Panel</h1>
+    <div style={s.page}>
+      <h1>🎬 Editor Dashboard</h1>
 
-      <input value={editor.name} onChange={e=>setEditor({...editor,name:e.target.value})}/>
-      <input value={editor.price} onChange={e=>setEditor({...editor,price:e.target.value})}/>
+      <div style={s.card}>
+        <h2>{editor.name}</h2>
+        <p>{editor.email}</p>
+        <p>Skills: {editor.skills?.join(", ")}</p>
+        <p>₹{editor.price}</p>
+      </div>
 
-      <button onClick={save}>Save</button>
+      {/* PORTFOLIO */}
+      <div style={s.card}>
+        <h3>Portfolio Video Link</h3>
+        <input
+          value={portfolio}
+          onChange={(e) => setPortfolio(e.target.value)}
+          placeholder="Paste Google Drive video link"
+          style={s.input}
+        />
 
-      <button onClick={()=>router.push("/editor/inbox")}>Inbox</button>
+        {portfolio && (
+          <video src={portfolio} controls style={{ width: "100%", marginTop: 10 }} />
+        )}
 
-      <button onClick={()=>signOut(auth)}>Logout</button>
+        <button style={s.btn} onClick={savePortfolio}>
+          Save Portfolio
+        </button>
+      </div>
+
+      <button style={s.chat} onClick={() => router.push("/editor/inbox")}>
+        📩 Inbox
+      </button>
+
+      <button style={s.logout} onClick={logout}>
+        Logout
+      </button>
     </div>
   );
 }
+
+const s = {
+  page: { minHeight: "100vh", padding: 20, background: "#020617", color: "white" },
+  card: { padding: 20, background: "#111827", marginTop: 20, borderRadius: 12 },
+  input: { width: "100%", padding: 10, marginTop: 10 },
+  btn: { marginTop: 10, padding: 10, background: "#22c55e", border: "none", color: "white" },
+  chat: { marginTop: 20, padding: 12, background: "#7c3aed", color: "white" },
+  logout: { marginTop: 10, padding: 12, background: "#ef4444", color: "white" },
+  center: { height: "100vh", display: "flex", justifyContent: "center", alignItems: "center" }
+};
