@@ -7,43 +7,65 @@ import { doc, getDoc } from "firebase/firestore";
 export default function Editor() {
   const router = useRouter();
 
-  const [user,setUser] = useState(null);
-  const [editor,setEditor] = useState(null);
+  const [user, setUser] = useState(null);
+  const [editor, setEditor] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async(u)=>{
-      if(!u){
-        router.push("/editor-login");
+    const unsub = onAuthStateChanged(auth, async (u) => {
+      if (!u) {
+        router.replace("/editor-login");
         return;
       }
 
       setUser(u);
 
-      const snap = await getDoc(doc(db,"editors",u.uid));
+      // ✅ MUST match UID
+      const ref = doc(db, "editors", u.uid);
+      const snap = await getDoc(ref);
 
-      if(!snap.exists()){
-        router.push("/editor-login");
+      if (!snap.exists()) {
+        console.log("❌ Editor doc not found");
+        router.replace("/editor-login");
         return;
       }
 
       setEditor(snap.data());
+      setLoading(false);
     });
 
-    return ()=>unsub();
-  },[]);
+    return () => unsub();
+  }, []);
 
-  const logout = async()=>{
+  const logout = async () => {
     await signOut(auth);
     router.push("/");
   };
 
-  if(!editor) return <p style={{padding:30}}>Loading...</p>;
+  if (loading) {
+    return (
+      <div style={s.center}>
+        <div style={s.loader}></div>
+      </div>
+    );
+  }
 
   return (
-    <div style={page}>
-      <h1>🎬 Editor Dashboard</h1>
+    <div style={s.page}>
+      {/* HEADER */}
+      <div style={s.header}>
+        <button onClick={() => router.push("/")} style={s.home}>
+          🏠 Home
+        </button>
 
-      <div style={card}>
+        <button onClick={logout} style={s.logout}>
+          Logout
+        </button>
+      </div>
+
+      <h1 style={s.title}>🎬 Editor Dashboard</h1>
+
+      <div style={s.card}>
         <h2>{editor.name}</h2>
         <p>{user.email}</p>
         <p>Skills: {editor.skills?.join(", ")}</p>
@@ -51,60 +73,71 @@ export default function Editor() {
         <p>Status: {editor.active ? "🟢 Online" : "🔴 Offline"}</p>
       </div>
 
-      <div style={{display:"grid",gap:"14px",marginTop:"25px"}}>
-
-        <button style={btnPurple}
-          onClick={()=>router.push("/editor/inbox")}>
+      <div style={s.grid}>
+        <button style={btn("#8b5cf6")} onClick={() => router.push("/editor/inbox")}>
           📩 Inbox
         </button>
 
-        <button style={btnBlue}
-          onClick={()=>router.push("/profile")}>
+        <button style={btn("#06b6d4")} onClick={() => router.push("/profile")}>
           ⚙️ Settings
         </button>
 
-        <button style={btnGreen}
-          onClick={()=>router.push(`/chat/admin_${user.uid}`)}>
+        <button style={btn("#10b981")} onClick={() => router.push(`/chat/admin_${user.uid}`)}>
           💬 Chat Admin
         </button>
-
-        <button style={btnRed}
-          onClick={logout}>
-          Logout
-        </button>
-
       </div>
     </div>
   );
 }
 
-const page={
-minHeight:"100vh",
-padding:"40px",
-background:"linear-gradient(135deg,#0f172a,#1e1b4b,#581c87)",
-color:"white"
+const s = {
+  page: {
+    minHeight: "100vh",
+    padding: 20,
+    background: "linear-gradient(135deg,#020617,#0f172a,#1e1b4b)",
+    color: "white",
+  },
+  header: {
+    display: "flex",
+    justifyContent: "space-between",
+  },
+  home: { background: "#334155", color: "white", padding: 8 },
+  logout: { background: "#ef4444", color: "white", padding: 8 },
+  title: { marginTop: 20 },
+  card: {
+    marginTop: 20,
+    padding: 20,
+    borderRadius: 14,
+    background: "rgba(255,255,255,0.05)",
+  },
+  grid: {
+    display: "grid",
+    gap: 12,
+    marginTop: 25,
+  },
+  center: {
+    height: "100vh",
+    display: "flex",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  loader: {
+    width: 30,
+    height: 30,
+    border: "3px solid #333",
+    borderTop: "3px solid #7c3aed",
+    borderRadius: "50%",
+    animation: "spin 1s linear infinite",
+  },
 };
 
-const card={
-padding:"25px",
-borderRadius:"18px",
-background:"rgba(255,255,255,0.08)",
-marginTop:"25px"
-};
-
-const btnPurple=btn("#8b5cf6");
-const btnBlue=btn("#06b6d4");
-const btnGreen=btn("#10b981");
-const btnRed=btn("#ef4444");
-
-function btn(bg){
-return{
-padding:"14px",
-border:"none",
-borderRadius:"12px",
-background:bg,
-color:"white",
-fontWeight:"bold",
-cursor:"pointer"
-};
+function btn(bg) {
+  return {
+    padding: 14,
+    border: "none",
+    borderRadius: 10,
+    background: bg,
+    color: "white",
+    fontWeight: "bold",
+  };
 }
