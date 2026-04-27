@@ -1,14 +1,12 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
 import { auth, db } from "../../lib/firebase";
-import { onAuthStateChanged, signOut } from "firebase/auth";
+import { onAuthStateChanged } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
 
 export default function Editor() {
   const router = useRouter();
-
   const [editor, setEditor] = useState(null);
-  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
@@ -17,105 +15,45 @@ export default function Editor() {
         return;
       }
 
-      try {
-        // ✅ FAST + CORRECT
-        const snap = await getDoc(doc(db, "editors", u.uid));
+      const uid = u.uid;
 
-        if (!snap.exists()) {
-          alert("Editor profile not found");
-          router.replace("/login?type=editor");
-          return;
-        }
+      // 🔥 CHECK ROLE FIRST
+      const userSnap = await getDoc(doc(db, "users", uid));
 
-        setEditor(snap.data());
-        setLoading(false);
-
-      } catch (err) {
-        console.log(err);
-        router.replace("/");
+      if (!userSnap.exists() || userSnap.data().role !== "editor") {
+        router.replace("/client");
+        return;
       }
+
+      // 🔥 GET EDITOR DATA
+      const editorSnap = await getDoc(doc(db, "editors", uid));
+
+      if (!editorSnap.exists()) {
+        router.replace("/login?type=editor");
+        return;
+      }
+
+      if (!editorSnap.data().approved) {
+        alert("Wait for approval");
+        return;
+      }
+
+      setEditor(editorSnap.data());
     });
 
     return () => unsub();
   }, []);
 
-  const logout = async () => {
-    await signOut(auth);
-    router.replace("/");
-  };
-
-  if (loading) {
-    return (
-      <div style={s.center}>
-        <div style={s.loader}></div>
-      </div>
-    );
-  }
+  if (!editor) return <div>Loading...</div>;
 
   return (
-    <div style={s.page}>
-      <h1>🎬 Editor Dashboard</h1>
+    <div style={{padding:20}}>
+      <h1>Editor Dashboard</h1>
 
-      <div style={s.card}>
-        <h2>{editor.name}</h2>
-        <p>{editor.email}</p>
-        <p>{editor.skills?.join(", ")}</p>
-        <p>₹{editor.price}</p>
-      </div>
-
-      <button
-        style={s.btn}
-        onClick={() => router.push(`/chat/admin_${auth.currentUser.uid}`)}
-      >
-        💬 Chat Admin
-      </button>
-
-      <button style={s.logout} onClick={logout}>
-        Logout
-      </button>
+      <h2>{editor.name}</h2>
+      <p>{editor.email}</p>
+      <p>{editor.skills.join(", ")}</p>
+      <p>₹{editor.price}</p>
     </div>
   );
 }
-
-const s = {
-  page: {
-    minHeight: "100vh",
-    padding: 20,
-    background: "#020617",
-    color: "white",
-  },
-  card: {
-    padding: 20,
-    background: "#111827",
-    marginTop: 20,
-    borderRadius: 12,
-  },
-  btn: {
-    marginTop: 20,
-    padding: 12,
-    background: "#7c3aed",
-    border: "none",
-    color: "white",
-  },
-  logout: {
-    marginTop: 10,
-    padding: 12,
-    background: "#ef4444",
-    border: "none",
-    color: "white",
-  },
-  center: {
-    height: "100vh",
-    display: "flex",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  loader: {
-    width: 40,
-    height: 40,
-    border: "4px solid #333",
-    borderTop: "4px solid #8b5cf6",
-    borderRadius: "50%",
-    animation: "spin 1s linear infinite",
-  },
-};
