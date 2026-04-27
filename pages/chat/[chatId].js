@@ -1,81 +1,97 @@
-import { useEffect, useState, useRef } from "react";
-import { db, auth } from "../../lib/firebase";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/router";
+import { auth, db } from "../../lib/firebase";
+import { onAuthStateChanged } from "firebase/auth";
 import {
-  collection,
-  addDoc,
-  onSnapshot,
-  deleteDoc,
   doc,
   getDoc,
   setDoc,
-  serverTimestamp,
+  collection,
+  addDoc,
+  onSnapshot,
   query,
   orderBy,
+  serverTimestamp,
 } from "firebase/firestore";
-import { onAuthStateChanged } from "firebase/auth";
-import { useRouter } from "next/router";
 
-export default function Chat() {
-  const [msgs, setMsgs] = useState([]);
-  const [text, setText] = useState("");
+export default function ChatPage() {
+  const router = useRouter();
+  const { id } = router.query;
+
   const [user, setUser] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [text, setText] = useState("");
   const [loading, setLoading] = useState(true);
 
-  const router = useRouter();
-  const { chatId } = router.query;
-  const bottomRef = useRef();
-
-  // AUTH
+  // 🔥 AUTH + PAYMENT LOCK
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (u) => {
-      if (!u) return router.push("/login");
+    if (!id) return;
+
+    const unsub = onAuthStateChanged(auth, async (u) => {
+      if (!u) return router.replace("/login");
+
       setUser(u);
-      setLoading(false);
+
+      // 🔒 CHECK PAYMENT ACCESS
+      const accessSnap = await getDoc(doc(db, "clientAccess", u.uid));
+
+      if (!accessSnap.exists() || accessSnap.data().status !== "approved") {
+        alert("🔒 Pay ₹10 to unlock chat");
+        router.replace("/client");
+        return;
+      }
+
+      // ✅ CREATE CHAT IF NOT EXISTS
+      const chatRef = doc(db, "chats", id);
+      const chatSnap = await getDoc(chatRef);
+
+      if (!chatSnap.exists()) {
+        const users = id.split("_"); // clientId_editorId
+
+        await setDoc(chatRef, {
+          users,
+          createdAt: serverTimestamp(),
+          lastMessage: "",
+          lastUpdated: serverTimestamp(),
+        });
+      }
+
+      // 🔥 REALTIME MESSAGES
+      const q = query(
+        collection(db, "chats", id, "messages"),
+        orderBy("createdAt", "asc")
+      );
+
+      return onSnapshot(q, (snap) => {
+        setMessages(
+          snap.docs.map((d) => ({
+            id: d.id,
+            ...d.data(),
+          }))
+        );
+        setLoading(false);
+      });
     });
+
     return () => unsub();
-  }, []);
+  }, [id]);
 
-  // LOAD MESSAGES REALTIME
-  useEffect(() => {
-    if (!chatId) return;
-
-    const q = query(
-      collection(db, "chats", chatId, "messages"),
-      orderBy("createdAt", "asc")
-    );
-
-    return onSnapshot(q, (snap) => {
-      setMsgs(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-    });
-  }, [chatId]);
-
-  // AUTO SCROLL
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [msgs]);
-
-  // SEND MESSAGE (🔥 IMPORTANT FIX)
-  const send = async () => {
+  // 🔥 SEND MESSAGE
+  const sendMessage = async () => {
     if (!text.trim()) return;
 
-    const messageData = {
-      text: text.trim(),
-      uid: user.uid,
-      user: user.email,
+    await addDoc(collection(db, "chats", id, "messages"), {
+      text,
+      sender: user.uid,
       createdAt: serverTimestamp(),
-    };
+    });
 
-    // 1. Add message
-    await addDoc(collection(db, "chats", chatId, "messages"), messageData);
-
-    // 2. UPDATE CHAT DOC (THIS FIXES INBOX + LAST MESSAGE)
+    // update last message
     await setDoc(
-      doc(db, "chats", chatId),
+      doc(db, "chats", id),
       {
-        lastMessage: text.trim(),
-        lastMessageAt: serverTimestamp(),
-        lastSender: user.email,
-        participants: chatId.split("_"),
+        lastMessage: text,
+        lastUpdated: serverTimestamp(),
       },
       { merge: true }
     );
@@ -83,68 +99,134 @@ export default function Chat() {
     setText("");
   };
 
-  const del = async (id) => {
-    await deleteDoc(doc(db, "chats", chatId, "messages", id));
-  };
-
-  if (loading) return <div style={{ padding: 20 }}>Loading...</div>;
-
-  const isMe = (m) => m.uid === user.uid;
+  if (loading) {
+    return (
+      <div style={s.center}>
+        <div style={s.loader}></div>
+      </div>
+    );
+  }
 
   return (
     <div style={s.page}>
+      {/* HEADER */}
       <div style={s.header}>
-        <button onClick={() => router.back()} style={s.back}>←</button>
-        <div>Chat</div>
+        <button onClick={() => router.back()} style={s.back}>
+          ←
+        </button>
+        <h2>Chat</h2>
       </div>
 
-      <div style={s.chat}>
-        {msgs.map((m) => (
+      {/* MESSAGES */}
+      <div style={s.chatBox}>
+        {messages.map((m) => (
           <div
             key={m.id}
             style={{
-              ...s.row,
-              justifyContent: isMe(m) ? "flex-end" : "flex-start",
+              ...s.msg,
+              alignSelf:
+                m.sender === user.uid ? "flex-end" : "flex-start",
+              background:
+                m.sender === user.uid ? "#7c3aed" : "#1e293b",
             }}
           >
-            <div style={{
-              ...s.bubble,
-              background: isMe(m) ? "#7c3aed" : "#1e293b",
-            }}>
-              {!isMe(m) && <div style={s.sender}>{m.user}</div>}
-              {m.text}
-            </div>
-
-            <button onClick={() => del(m.id)} style={s.delete}>×</button>
+            {m.text}
           </div>
         ))}
-        <div ref={bottomRef} />
       </div>
 
-      <div style={s.inputWrap}>
+      {/* INPUT */}
+      <div style={s.inputRow}>
         <input
           value={text}
           onChange={(e) => setText(e.target.value)}
           placeholder="Type message..."
           style={s.input}
-          onKeyDown={(e) => e.key === "Enter" && send()}
         />
-        <button onClick={send} style={s.send}>Send</button>
+        <button onClick={sendMessage} style={s.send}>
+          Send
+        </button>
       </div>
     </div>
   );
 }
 
 const s = {
-  page: { height: "100vh", display: "flex", flexDirection: "column", background: "#020617", color: "white" },
-  header: { padding: 12, borderBottom: "1px solid #222", display: "flex", gap: 10 },
-  back: { background: "none", border: "none", color: "white" },
-  chat: { flex: 1, overflowY: "auto", padding: 12, display: "flex", flexDirection: "column", gap: 10 },
-  row: { display: "flex", gap: 6 },
-  bubble: { padding: 10, borderRadius: 12, maxWidth: "70%" },
-  sender: { fontSize: 10, opacity: 0.6 },
-  delete: { background: "none", border: "none", color: "#555" },
-  inputWrap: { display: "flex", padding: 10, borderTop: "1px solid #222" },
-  input: { flex: 1, padding: 10, borderRadius: 10, border: "none", background: "#111", color: "white" },
-  send: { marginLeft: 6, padding: "10px 14px", background: "#7c3aed", border: "none", color: "white", borderRadius: 10 },
+  page: {
+    minHeight: "100vh",
+    display: "flex",
+    flexDirection: "column",
+    background: "linear-gradient(135deg,#020617,#0f172a,#1e1b4b)",
+    color: "white",
+  },
+
+  header: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    padding: 15,
+    borderBottom: "1px solid rgba(255,255,255,0.1)",
+  },
+
+  back: {
+    background: "none",
+    border: "none",
+    color: "white",
+    fontSize: 18,
+  },
+
+  chatBox: {
+    flex: 1,
+    display: "flex",
+    flexDirection: "column",
+    gap: 10,
+    padding: 15,
+    overflowY: "auto",
+  },
+
+  msg: {
+    padding: "10px 14px",
+    borderRadius: 12,
+    maxWidth: "70%",
+    fontSize: 14,
+  },
+
+  inputRow: {
+    display: "flex",
+    padding: 10,
+    borderTop: "1px solid rgba(255,255,255,0.1)",
+  },
+
+  input: {
+    flex: 1,
+    padding: 10,
+    borderRadius: 10,
+    border: "none",
+    outline: "none",
+  },
+
+  send: {
+    marginLeft: 8,
+    padding: "10px 16px",
+    background: "#7c3aed",
+    border: "none",
+    color: "white",
+    borderRadius: 10,
+  },
+
+  center: {
+    height: "100vh",
+    display: "flex",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+
+  loader: {
+    width: 30,
+    height: 30,
+    border: "3px solid #333",
+    borderTop: "3px solid #7c3aed",
+    borderRadius: "50%",
+    animation: "spin 1s linear infinite",
+  },
 };
