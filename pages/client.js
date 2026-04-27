@@ -49,4 +49,4 @@ const s = {
     color: "white",
     padding: 40
   }
-};
+}; 
