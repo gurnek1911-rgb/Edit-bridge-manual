@@ -6,6 +6,7 @@ import {
 } from "firebase/auth";
 import { auth, db } from "../lib/firebase";
 import { doc, setDoc, getDoc } from "firebase/firestore";
+import HomeButton from "../components/HomeButton";
 
 export default function Login() {
   const router = useRouter();
@@ -14,44 +15,32 @@ export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
-  // 🔐 LOGIN
   const login = async () => {
     try {
       const userCred = await signInWithEmailAndPassword(auth, email, password);
+      const snap = await getDoc(doc(db, "users", userCred.user.uid));
 
-      const ref = doc(db, "users", userCred.user.uid);
-      const snap = await getDoc(ref);
+      const role = snap.data()?.role;
 
-      if (!snap.exists()) {
-        alert("User data missing");
-        return;
-      }
-
-      const role = snap.data().role;
-
-      if (role === "client") router.push("/client");
-      else if (role === "editor") router.push("/editor");
+      if (role === "editor") router.push("/editor");
       else router.push("/client");
-
     } catch (err) {
       alert(err.message);
     }
   };
 
-  // 🆕 SIGNUP
   const signup = async () => {
     try {
       const userCred = await createUserWithEmailAndPassword(auth, email, password);
 
+      const role = type === "editor" ? "editor" : "client";
+
       await setDoc(doc(db, "users", userCred.user.uid), {
-        email: email,
-        role: "client",
-        credits: 0,
-        chatUnlocked: false
+        email,
+        role
       });
 
-      router.push("/client");
-
+      router.push(role === "editor" ? "/editor" : "/client");
     } catch (err) {
       alert(err.message);
     }
@@ -59,6 +48,8 @@ export default function Login() {
 
   return (
     <div style={wrap}>
+      <HomeButton />
+
       <div style={card}>
         <h1>🚀 Login</h1>
 
@@ -72,7 +63,6 @@ export default function Login() {
   );
 }
 
-/* UI (futuristic) */
 const wrap = {
   minHeight: "100vh",
   display: "flex",
@@ -82,41 +72,13 @@ const wrap = {
 };
 
 const card = {
-  padding: "30px",
-  borderRadius: "20px",
+  padding: 30,
+  borderRadius: 20,
   background: "rgba(30,27,75,0.7)",
   backdropFilter: "blur(15px)",
-  boxShadow: "0 0 40px rgba(139,92,246,0.5)",
-  width: "320px",
   color: "white"
 };
 
-const input = {
-  width: "100%",
-  padding: "12px",
-  marginTop: "12px",
-  borderRadius: "10px",
-  border: "none",
-  background: "#0f172a",
-  color: "white"
-};
-
-const btn = {
-  width: "100%",
-  marginTop: "15px",
-  padding: "12px",
-  background: "linear-gradient(135deg,#06b6d4,#6366f1)",
-  border: "none",
-  borderRadius: "10px",
-  color: "white"
-};
-
-const signupBtn = {
-  width: "100%",
-  marginTop: "10px",
-  padding: "12px",
-  background: "#22c55e",
-  border: "none",
-  borderRadius: "10px",
-  color: "white"
-};
+const input = { width: "100%", padding: 12, marginTop: 10 };
+const btn = { marginTop: 10, padding: 12, background: "#6366f1", color: "white" };
+const signupBtn = { marginTop: 10, padding: 12, background: "#22c55e", color: "white" };
