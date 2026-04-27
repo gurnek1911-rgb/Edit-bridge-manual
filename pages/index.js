@@ -6,76 +6,101 @@ import { doc, getDoc } from "firebase/firestore";
 
 export default function Home() {
   const [user, setUser] = useState(null);
-  const [role, setRole] = useState(null);
   const [loading, setLoading] = useState(true);
-
   const router = useRouter();
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (u) => {
-      if (!u) {
-        setUser(null);
-        setLoading(false);
-        return;
-      }
-
+    const unsub = onAuthStateChanged(auth, (u) => {
       setUser(u);
-
-      try {
-        const snap = await getDoc(doc(db, "users", u.uid));
-
-        if (snap.exists()) {
-          setRole(snap.data().role);
-        }
-      } catch (err) {
-        console.log(err);
-      }
-
       setLoading(false);
     });
 
     return () => unsub();
   }, []);
 
-  const logout = async () => {
-    await signOut(auth);
-    location.reload();
+  // ✅ ROLE BASED DASHBOARD REDIRECT
+  const goDashboard = async () => {
+    if (!user) {
+      router.push("/login");
+      return;
+    }
+
+    try {
+      const snap = await getDoc(doc(db, "users", user.uid));
+
+      if (!snap.exists()) {
+        alert("User data missing");
+        return;
+      }
+
+      const role = snap.data().role;
+
+      if (role === "editor") {
+        router.push("/editor");
+      } else if (role === "client") {
+        router.push("/client");
+      } else if (role === "admin") {
+        router.push("/admin");
+      } else {
+        alert("Invalid role");
+      }
+
+    } catch (err) {
+      alert(err.message);
+    }
   };
 
-  if (loading) return <div style={s.loader}>Loading...</div>;
+  // ✅ LOGOUT
+  const handleLogout = async () => {
+    await signOut(auth);
+    setUser(null);
+    router.push("/");
+  };
+
+  if (loading) {
+    return (
+      <div style={s.loader}>
+        <div style={s.spinner}></div>
+      </div>
+    );
+  }
 
   return (
     <div style={s.page}>
-      {/* NAV */}
+      {/* NAVBAR */}
       <div style={s.nav}>
         <div style={s.logo}>🎬 EditBridge</div>
 
         {!user ? (
           <div style={s.navBtns}>
-            <button onClick={() => router.push("/login?type=client")} style={s.btn}>
+            <button
+              onClick={() => router.push("/login?type=client")}
+              style={s.btn}
+            >
               Client
             </button>
 
-            <button onClick={() => router.push("/login?type=editor")} style={s.btnPrimary}>
+            <button
+              onClick={() => router.push("/login?type=editor")}
+              style={s.btnPrimary}
+            >
               Editor
             </button>
 
-            <button onClick={() => router.push("/admin-login")} style={s.adminBtn}>
+            <button
+              onClick={() => router.push("/admin-login")}
+              style={s.adminBtn}
+            >
               Admin
             </button>
           </div>
         ) : (
           <div style={s.navBtns}>
-            <button
-              onClick={() =>
-                router.push(role === "editor" ? "/editor" : "/client")
-              }
-              style={s.btnPrimary}
-            >
+            <button onClick={goDashboard} style={s.btnPrimary}>
               Dashboard
             </button>
 
-            <button onClick={logout} style={s.adminBtn}>
+            <button onClick={handleLogout} style={s.logout}>
               Logout
             </button>
           </div>
@@ -92,12 +117,7 @@ export default function Home() {
           Chat instantly, hire fast, and scale your content production.
         </p>
 
-        <button
-          onClick={() =>
-            router.push(user ? (role === "editor" ? "/editor" : "/client") : "/login")
-          }
-          style={s.cta}
-        >
+        <button onClick={goDashboard} style={s.cta}>
           🚀 Get Started
         </button>
       </div>
@@ -111,52 +131,84 @@ const s = {
     background: "linear-gradient(135deg,#020617,#0f172a,#1e1b4b)",
     color: "white"
   },
+
   loader: {
     height: "100vh",
     display: "flex",
     justifyContent: "center",
     alignItems: "center",
-    background: "#020617",
-    color: "white"
+    background: "#020617"
   },
+
+  spinner: {
+    width: 40,
+    height: 40,
+    border: "4px solid #333",
+    borderTop: "4px solid #8b5cf6",
+    borderRadius: "50%",
+    animation: "spin 1s linear infinite"
+  },
+
   nav: {
     display: "flex",
     justifyContent: "space-between",
-    padding: 20
+    padding: 20,
+    alignItems: "center"
   },
-  logo: { fontWeight: 800 },
-  navBtns: { display: "flex", gap: 10 },
+
+  logo: {
+    fontWeight: 800,
+    fontSize: 18
+  },
+
+  navBtns: {
+    display: "flex",
+    gap: 10
+  },
 
   btn: {
     background: "transparent",
     border: "1px solid #444",
     color: "white",
-    padding: 8,
+    padding: "8px 12px",
     borderRadius: 8
   },
 
   btnPrimary: {
-    background: "#7c3aed",
+    background: "linear-gradient(135deg,#6366f1,#8b5cf6)",
     border: "none",
     color: "white",
-    padding: 8,
-    borderRadius: 8
+    padding: "8px 12px",
+    borderRadius: 8,
+    fontWeight: 600
   },
 
   adminBtn: {
     background: "#ef4444",
     border: "none",
     color: "white",
-    padding: 8,
+    padding: "8px 12px",
+    borderRadius: 8
+  },
+
+  logout: {
+    background: "#dc2626",
+    border: "none",
+    color: "white",
+    padding: "8px 12px",
     borderRadius: 8
   },
 
   hero: {
     textAlign: "center",
-    marginTop: 120
+    marginTop: 120,
+    padding: 20
   },
 
-  title: { fontSize: 42, fontWeight: 800 },
+  title: {
+    fontSize: 42,
+    fontWeight: 800
+  },
 
   gradient: {
     background: "linear-gradient(135deg,#a78bfa,#60a5fa)",
@@ -175,6 +227,7 @@ const s = {
     background: "#6366f1",
     border: "none",
     color: "white",
-    borderRadius: 10
+    borderRadius: 10,
+    fontWeight: 600
   }
 };
