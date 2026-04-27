@@ -25,7 +25,7 @@ export default function ClientPage() {
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
-      if (!u) return router.push("/login");
+      if (!u) return router.push("/");
 
       setUser(u);
 
