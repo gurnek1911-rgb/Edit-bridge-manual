@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import { auth, db } from "../../lib/firebase";
 import {
   collection,
@@ -15,76 +15,61 @@ export default function Inbox() {
   const [chats, setChats] = useState([]);
   const router = useRouter();
 
-  const unsubRef = useRef(null);
-
   useEffect(() => {
     const unsubAuth = onAuthStateChanged(auth, (u) => {
-      if (!u) return router.replace("/login");
+      if (!u) return router.replace("/login?type=editor");
 
+      // ✅ READ FROM clientAccess INSTEAD OF chats
       const q = query(
-        collection(db, "chats"),
-        where("users", "array-contains", u.uid)
+        collection(db, "clientAccess"),
+        where("editorId", "==", u.uid),
+        where("status", "==", "approved")
       );
 
-      unsubRef.current = onSnapshot(q, async (snap) => {
+      const unsub = onSnapshot(q, async (snap) => {
         const list = await Promise.all(
           snap.docs.map(async (d) => {
             const data = d.data();
-            const other = data.users.find(id => id !== u.uid);
 
-            let name = "User";
+            let clientName = "Client";
 
             try {
-              const userSnap = await getDoc(doc(db, "users", other));
+              const userSnap = await getDoc(doc(db, "users", data.uid));
               if (userSnap.exists()) {
-                name = userSnap.data().email;
-              } else {
-                const edSnap = await getDoc(doc(db, "editors", other));
-                if (edSnap.exists()) name = edSnap.data().name;
-                else name = "Admin";
+                clientName = userSnap.data().email || "Client";
               }
             } catch {}
 
             return {
-              id: d.id,
-              ...data,
-              name
+              chatId: data.chatId,
+              clientName
             };
           })
         );
 
         setChats(list);
       });
+
+      return () => unsub();
     });
 
-    return () => {
-      unsubAuth();
-      unsubRef.current && unsubRef.current();
-    };
+    return () => unsubAuth();
   }, []);
 
   return (
     <div style={s.page}>
-      <div style={s.header}>
-        <button onClick={() => router.push("/editor")}>← Back</button>
-        <h2>Inbox</h2>
-      </div>
+      <h2 style={s.title}>Inbox</h2>
 
       {chats.length === 0 ? (
-        <p style={{textAlign:"center",marginTop:50}}>No chats yet</p>
+        <p>No chats</p>
       ) : (
-        chats.map(c => (
+        chats.map((c, i) => (
           <div
-            key={c.id}
+            key={i}
             style={s.card}
-            onClick={() => router.push("/chat/" + c.id)}
+            onClick={() => router.push("/chat/" + c.chatId)}
           >
-            <div>
-              <b>{c.name}</b>
-              <div style={{opacity:0.7}}>
-                {c.lastMessage || "Start conversation"}
-              </div>
-            </div>
+            <b>{c.clientName}</b>
           </div>
         ))
       )}
@@ -93,7 +78,13 @@ export default function Inbox() {
 }
 
 const s = {
-  page:{padding:20,color:"white",background:"#020617",minHeight:"100vh"},
-  header:{display:"flex",justifyContent:"space-between",marginBottom:20},
-  card:{padding:15,background:"#1e293b",marginTop:10,borderRadius:10,cursor:"pointer"}
+  page: { padding: 20, color: "white", background: "#020617", minHeight: "100vh" },
+  title: { marginBottom: 20 },
+  card: {
+    padding: 12,
+    background: "#1e293b",
+    marginBottom: 10,
+    borderRadius: 10,
+    cursor: "pointer"
+  }
 };
