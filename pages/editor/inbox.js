@@ -200,4 +200,4 @@ const s = {
     marginTop: 80,
     padding: 20,
   },
-}; 
+};
