@@ -1,3 +1,5 @@
+"use client";
+
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/router";
 import { auth, db } from "../../lib/firebase";
@@ -52,15 +54,39 @@ export default function Admin() {
     };
   }, []);
 
-  // OPEN CHAT
+  // 🔥 APPROVE (FULL FIX)
+  const approvePayment = async (p) => {
+    const chatId = [p.uid, p.editorId].sort().join("_");
+
+    await updateDoc(doc(db, "paymentRequests", p.id), {
+      status: "approved"
+    });
+
+    await setDoc(doc(db, "clientAccess", p.uid + "_" + p.editorId), {
+      uid: p.uid,
+      editorId: p.editorId,
+      status: "approved",
+      chatId
+    });
+
+    // FORCE CHAT CREATION
+    await setDoc(doc(db, "chats", chatId), {
+      users: [p.uid, p.editorId],
+      createdAt: serverTimestamp(),
+      lastMessage: "",
+      lastUpdated: serverTimestamp()
+    }, { merge: true });
+  };
+
+  // 💬 OPEN CHAT
   const openChat = async (targetUid, name) => {
     const chatId = [adminUidRef.current, targetUid].sort().join("_");
 
-    const chatRef = doc(db, "chats", chatId);
-    const snap = await getDoc(chatRef);
+    const ref = doc(db, "chats", chatId);
+    const snap = await getDoc(ref);
 
     if (!snap.exists()) {
-      await setDoc(chatRef, {
+      await setDoc(ref, {
         users: [adminUidRef.current, targetUid],
         createdAt: serverTimestamp(),
         lastMessage: "",
@@ -101,54 +127,63 @@ export default function Admin() {
     setMsgText("");
   };
 
-  // APPROVE
-  const approvePayment = async (p) => {
-    await updateDoc(doc(db, "paymentRequests", p.id), {
-      status: "approved"
-    });
-
-    await setDoc(doc(db, "clientAccess", p.uid + "_" + p.editorId), {
-      uid: p.uid,
-      editorId: p.editorId,
-      status: "approved",
-      chatId: p.chatId
-    });
-  };
-
   return (
     <div style={s.page}>
-      <h1>Admin Panel</h1>
+      <h1>🔥 Admin Panel</h1>
 
       {payments.map(p => (
         <div key={p.id} style={s.card}>
           <div>
             <b>{p.email}</b>
-            <div>Txn: {p.txnId}</div>
+            <div style={{opacity:0.7}}>Txn: {p.txnId}</div>
           </div>
 
-          <div>
-            <button onClick={() => approvePayment(p)}>Approve</button>
-            <button onClick={() => openChat(p.uid, p.email)}>Chat</button>
+          <div style={s.actions}>
+            {p.status === "pending" && (
+              <button onClick={() => approvePayment(p)} style={s.green}>
+                Approve
+              </button>
+            )}
+
+            <button onClick={() => openChat(p.uid, p.email)} style={s.purple}>
+              Chat
+            </button>
           </div>
         </div>
       ))}
 
+      {/* CHAT PANEL */}
       {chatOpen && (
         <div style={s.chat}>
-          <div>{chatTarget?.name}</div>
+          <div style={s.chatHeader}>
+            {chatTarget?.name}
+            <button onClick={() => setChatOpen(false)}>X</button>
+          </div>
 
-          <div style={s.body}>
-            {messages.map(m => (
-              <div key={m.id}>{m.text}</div>
-            ))}
+          <div style={s.chatBody}>
+            {messages.map(m => {
+              const isMe = m.sender === adminUidRef.current;
+              return (
+                <div key={m.id} style={{
+                  ...s.msg,
+                  alignSelf: isMe ? "flex-end" : "flex-start",
+                  background: isMe ? "#7c3aed" : "#334155"
+                }}>
+                  {m.text}
+                </div>
+              );
+            })}
             <div ref={bottomRef}/>
           </div>
 
-          <input
-            value={msgText}
-            onChange={(e)=>setMsgText(e.target.value)}
-          />
-          <button onClick={sendMsg}>Send</button>
+          <div style={s.chatInput}>
+            <input
+              value={msgText}
+              onChange={(e)=>setMsgText(e.target.value)}
+              placeholder="Type message..."
+            />
+            <button onClick={sendMsg}>Send</button>
+          </div>
         </div>
       )}
     </div>
@@ -156,8 +191,15 @@ export default function Admin() {
 }
 
 const s = {
-  page:{padding:20,color:"white",background:"#020617",minHeight:"100vh"},
-  card:{display:"flex",justifyContent:"space-between",padding:10,background:"#1e293b",marginTop:10},
-  chat:{position:"fixed",bottom:0,right:0,width:300,background:"#111"},
-  body:{height:200,overflowY:"auto"}
+  page:{padding:20,color:"white",background:"linear-gradient(135deg,#020617,#0f172a,#1e1b4b)",minHeight:"100vh"},
+  card:{display:"flex",justifyContent:"space-between",padding:15,background:"#1e293b",marginTop:10,borderRadius:12},
+  actions:{display:"flex",gap:10},
+  green:{background:"#22c55e",border:"none",padding:8,color:"white",borderRadius:8},
+  purple:{background:"#7c3aed",border:"none",padding:8,color:"white",borderRadius:8},
+
+  chat:{position:"fixed",bottom:0,right:0,width:320,height:420,background:"#0f172a",display:"flex",flexDirection:"column"},
+  chatHeader:{padding:10,display:"flex",justifyContent:"space-between"},
+  chatBody:{flex:1,overflowY:"auto",padding:10,display:"flex",flexDirection:"column",gap:8},
+  msg:{padding:8,borderRadius:10,maxWidth:"70%"},
+  chatInput:{display:"flex",gap:5,padding:10}
 };
