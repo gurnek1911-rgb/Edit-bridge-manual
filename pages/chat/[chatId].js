@@ -7,7 +7,9 @@ import {
   onSnapshot,
   query,
   orderBy,
-  serverTimestamp
+  serverTimestamp,
+  doc,
+  setDoc
 } from "firebase/firestore";
 
 export default function Chat() {
@@ -28,16 +30,29 @@ export default function Chat() {
 
     return onSnapshot(q, (snap) => {
       setMessages(snap.docs.map(d => d.data()));
-      bottomRef.current?.scrollIntoView();
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
     });
   }, [chatId]);
 
   const send = async () => {
     if (!text.trim()) return;
 
+    const user = auth.currentUser;
+    if (!user) return;
+
+    const ids = chatId.split("_");
+
+    // ✅ CREATE / UPDATE CHAT (VERY IMPORTANT)
+    await setDoc(doc(db, "chats", chatId), {
+      users: ids,
+      lastMessage: text,
+      updatedAt: serverTimestamp()
+    }, { merge: true });
+
+    // ✅ ADD MESSAGE
     await addDoc(collection(db, "chats", chatId, "messages"), {
       text,
-      sender: auth.currentUser.uid,
+      sender: user.uid,
       createdAt: serverTimestamp()
     });
 
@@ -52,7 +67,14 @@ export default function Chat() {
             key={i}
             style={{
               ...s.msg,
-              alignSelf: m.sender === auth.currentUser.uid ? "flex-end" : "flex-start"
+              alignSelf:
+                m.sender === auth.currentUser?.uid
+                  ? "flex-end"
+                  : "flex-start",
+              background:
+                m.sender === auth.currentUser?.uid
+                  ? "#6366f1"
+                  : "#334155"
             }}
           >
             {m.text}
@@ -62,7 +84,12 @@ export default function Chat() {
       </div>
 
       <div style={s.inputRow}>
-        <input value={text} onChange={(e) => setText(e.target.value)} style={s.input}/>
+        <input
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          style={s.input}
+          placeholder="Type message..."
+        />
         <button onClick={send} style={s.btn}>Send</button>
       </div>
     </div>
@@ -72,8 +99,8 @@ export default function Chat() {
 const s = {
   page: { height: "100vh", display: "flex", flexDirection: "column", background: "#020617" },
   chat: { flex: 1, padding: 10, display: "flex", flexDirection: "column", gap: 8 },
-  msg: { background: "#334155", padding: 8, borderRadius: 10, color: "white" },
-  inputRow: { display: "flex", padding: 10 },
-  input: { flex: 1, padding: 10 },
-  btn: { background: "#7c3aed", color: "white", border: "none", padding: 10 }
+  msg: { padding: 10, borderRadius: 12, color: "white", maxWidth: "70%" },
+  inputRow: { display: "flex", padding: 10, gap: 8 },
+  input: { flex: 1, padding: 10, borderRadius: 8, border: "none" },
+  btn: { background: "#7c3aed", color: "white", border: "none", padding: 10, borderRadius: 8 }
 };
