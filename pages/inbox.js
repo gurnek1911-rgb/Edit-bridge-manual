@@ -1,9 +1,16 @@
+"use client";
+
 import { useEffect, useState } from "react";
 import { auth, db } from "../lib/firebase";
-import { onAuthStateChanged } from "firebase/auth";
-import { collection, query, where, onSnapshot } from "firebase/firestore";
+import {
+  collection,
+  query,
+  where,
+  onSnapshot,
+  orderBy
+} from "firebase/firestore";
+import { onAuthStateChanged, signOut } from "firebase/auth";
 import { useRouter } from "next/router";
-import HomeButton from "../components/HomeButton";
 
 export default function Inbox() {
   const [chats, setChats] = useState([]);
@@ -12,34 +19,46 @@ export default function Inbox() {
   useEffect(() => {
     let unsub;
 
-    const authUnsub = onAuthStateChanged(auth, (u) => {
+    const unsubAuth = onAuthStateChanged(auth, (u) => {
       if (!u) return router.push("/login");
 
       const q = query(
         collection(db, "chats"),
-        where("participants", "array-contains", u.uid)
+        where("users", "array-contains", u.uid),
+        orderBy("lastUpdated", "desc")
       );
 
       unsub = onSnapshot(q, (snap) => {
-        setChats(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+        const data = snap.docs.map(d => ({
+          id: d.id,
+          ...d.data()
+        }));
+        setChats(data);
       });
     });
 
     return () => {
-      authUnsub();
-      if (unsub) unsub();
+      unsubAuth();
+      unsub && unsub();
     };
   }, []);
 
   return (
     <div style={s.page}>
-      <HomeButton />
+      <div style={s.header}>
+        <h2>📩 Inbox</h2>
+        <button onClick={() => signOut(auth)}>Logout</button>
+      </div>
 
-      <h2>Inbox</h2>
+      {chats.length === 0 && <p>No chats yet</p>}
 
-      {chats.map((c) => (
-        <div key={c.id} onClick={() => router.push(`/chat/${c.id}`)}>
-          {c.lastMessage}
+      {chats.map(chat => (
+        <div
+          key={chat.id}
+          style={s.card}
+          onClick={() => router.push(`/chat/${chat.id}`)}
+        >
+          <div>{chat.lastMessage || "Start chatting..."}</div>
         </div>
       ))}
     </div>
@@ -49,8 +68,20 @@ export default function Inbox() {
 const s = {
   page: {
     minHeight: "100vh",
-    background: "#020617",
+    padding: 20,
     color: "white",
-    padding: 20
+    background: "linear-gradient(135deg,#020617,#0f172a,#1e1b4b)"
+  },
+  header: {
+    display: "flex",
+    justifyContent: "space-between",
+    marginBottom: 20
+  },
+  card: {
+    padding: 14,
+    background: "#1e293b",
+    borderRadius: 12,
+    marginBottom: 10,
+    cursor: "pointer"
   }
 };
