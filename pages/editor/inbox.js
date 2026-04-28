@@ -16,32 +16,42 @@ export default function Inbox() {
   const router = useRouter();
 
   useEffect(() => {
+    let unsub;
+
     const unsubAuth = onAuthStateChanged(auth, (u) => {
       if (!u) return router.replace("/login?type=editor");
 
-      // ✅ READ FROM clientAccess INSTEAD OF chats
+      // ✅ USE USERS ARRAY (BEST METHOD)
       const q = query(
         collection(db, "clientAccess"),
-        where("editorId", "==", u.uid),
+        where("users", "array-contains", u.uid),
         where("status", "==", "approved")
       );
 
-      const unsub = onSnapshot(q, async (snap) => {
+      unsub = onSnapshot(q, async (snap) => {
         const list = await Promise.all(
           snap.docs.map(async (d) => {
             const data = d.data();
 
+            // 🔥 find client (not editor)
+            const clientUid = data.users.find(id => id !== u.uid);
+
             let clientName = "Client";
 
             try {
-              const userSnap = await getDoc(doc(db, "users", data.uid));
+              const userSnap = await getDoc(doc(db, "users", clientUid));
               if (userSnap.exists()) {
                 clientName = userSnap.data().email || "Client";
               }
             } catch {}
 
+            // 🔥 ALWAYS SAFE chatId
+            const chatId =
+              data.chatId ||
+              [clientUid, u.uid].sort().join("_");
+
             return {
-              chatId: data.chatId,
+              chatId,
               clientName
             };
           })
@@ -49,11 +59,12 @@ export default function Inbox() {
 
         setChats(list);
       });
-
-      return () => unsub();
     });
 
-    return () => unsubAuth();
+    return () => {
+      unsubAuth();
+      if (unsub) unsub();
+    };
   }, []);
 
   return (
