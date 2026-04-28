@@ -1,3 +1,5 @@
+// pages/editor/index.js
+
 "use client";
 
 import { useEffect, useState } from "react";
@@ -30,8 +32,16 @@ export default function Editor() {
 
       const unsubDoc = onSnapshot(ref, (snap) => {
         if (snap.exists()) {
-          setProfile(snap.data());
+          const data = snap.data();
+
+          setProfile({
+            ...data,
+            skills: Array.isArray(data.skills)
+              ? data.skills.join(", ")
+              : data.skills || ""
+          });
         }
+
         setLoading(false);
       });
 
@@ -48,13 +58,10 @@ export default function Editor() {
       doc(db, "editors", user.uid),
       {
         ...profile,
-        skills:
-          typeof profile.skills === "string"
-            ? profile.skills.split(",").map((s) => s.trim())
-            : profile.skills,
+        skills: profile.skills.split(",").map(s => s.trim()),
+        email: user.email,
         active: true,
-        approved: true,
-        email: user.email
+        approved: true
       },
       { merge: true }
     );
@@ -62,18 +69,14 @@ export default function Editor() {
     alert("✅ Profile saved");
   };
 
-  if (loading) {
-    return <div style={s.loader}><div style={s.spinner}></div></div>;
-  }
+  if (loading) return <div style={{color:"white"}}>Loading...</div>;
 
   return (
     <div style={s.page}>
-      {/* HEADER */}
       <div style={s.header}>
         <h2>🎬 Editor Dashboard</h2>
 
         <div style={{ display: "flex", gap: 10 }}>
-          {/* 🔥 INBOX BUTTON (MAIN FIX) */}
           <button onClick={() => router.push("/editor/inbox")} style={s.inbox}>
             📩 Inbox
           </button>
@@ -84,42 +87,38 @@ export default function Editor() {
         </div>
       </div>
 
-      {/* PROFILE */}
       <div style={s.card}>
         <h3>Profile</h3>
 
         <input
           placeholder="Name"
-          value={profile.name || ""}
+          value={profile.name}
           onChange={(e) => setProfile({ ...profile, name: e.target.value })}
           style={s.input}
         />
 
         <textarea
           placeholder="Bio"
-          value={profile.bio || ""}
+          value={profile.bio}
           onChange={(e) => setProfile({ ...profile, bio: e.target.value })}
           style={s.input}
         />
 
         <input
           placeholder="Skills"
-          value={profile.skills?.join?.(", ") || profile.skills || ""}
+          value={profile.skills}
           onChange={(e) => setProfile({ ...profile, skills: e.target.value })}
           style={s.input}
         />
 
         <input
           placeholder="Price ₹"
-          value={profile.price || ""}
-          onChange={(e) =>
-            setProfile({ ...profile, price: Number(e.target.value) })
-          }
+          value={profile.price}
+          onChange={(e) => setProfile({ ...profile, price: e.target.value })}
           style={s.input}
         />
       </div>
 
-      {/* SAVE BUTTON */}
       <button onClick={saveProfile} style={s.save}>
         Save Profile
       </button>
@@ -128,76 +127,11 @@ export default function Editor() {
 }
 
 const s = {
-  page: {
-    minHeight: "100vh",
-    padding: 20,
-    background: "linear-gradient(135deg,#020617,#0f172a,#1e1b4b)",
-    color: "white"
-  },
-
-  header: {
-    display: "flex",
-    justifyContent: "space-between",
-    marginBottom: 20
-  },
-
-  logout: {
-    background: "#ef4444",
-    border: "none",
-    padding: "8px 14px",
-    borderRadius: 8,
-    color: "white"
-  },
-
-  inbox: {
-    background: "#7c3aed",
-    border: "none",
-    padding: "8px 14px",
-    borderRadius: 8,
-    color: "white"
-  },
-
-  card: {
-    background: "rgba(30,41,59,0.6)",
-    padding: 16,
-    borderRadius: 14,
-    marginBottom: 16,
-    backdropFilter: "blur(10px)"
-  },
-
-  input: {
-    width: "100%",
-    padding: 10,
-    marginTop: 8,
-    borderRadius: 8,
-    border: "none",
-    background: "#0f172a",
-    color: "white"
-  },
-
-  save: {
-    width: "100%",
-    padding: 12,
-    background: "#7c3aed",
-    border: "none",
-    borderRadius: 10,
-    color: "white",
-    fontWeight: 700
-  },
-
-  loader: {
-    height: "100vh",
-    display: "flex",
-    justifyContent: "center",
-    alignItems: "center"
-  },
-
-  spinner: {
-    width: 40,
-    height: 40,
-    border: "4px solid #333",
-    borderTop: "4px solid #7c3aed",
-    borderRadius: "50%",
-    animation: "spin 1s linear infinite"
-  }
+  page:{minHeight:"100vh",padding:20,background:"linear-gradient(135deg,#020617,#0f172a,#1e1b4b)",color:"white"},
+  header:{display:"flex",justifyContent:"space-between",marginBottom:20},
+  logout:{background:"#ef4444",border:"none",padding:"8px 14px",borderRadius:8,color:"white"},
+  inbox:{background:"#7c3aed",border:"none",padding:"8px 14px",borderRadius:8,color:"white"},
+  card:{background:"rgba(30,41,59,0.6)",padding:16,borderRadius:14,marginBottom:16},
+  input:{width:"100%",padding:10,marginTop:8,borderRadius:8,border:"none",background:"#0f172a",color:"white"},
+  save:{width:"100%",padding:12,background:"#7c3aed",border:"none",borderRadius:10,color:"white"}
 };
