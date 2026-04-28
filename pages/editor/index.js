@@ -1,5 +1,3 @@
-// pages/editor/index.js
-
 "use client";
 
 import { useEffect, useState } from "react";
@@ -31,17 +29,7 @@ export default function Editor() {
       const ref = doc(db, "editors", u.uid);
 
       const unsubDoc = onSnapshot(ref, (snap) => {
-        if (snap.exists()) {
-          const data = snap.data();
-
-          setProfile({
-            ...data,
-            skills: Array.isArray(data.skills)
-              ? data.skills.join(", ")
-              : data.skills || ""
-          });
-        }
-
+        if (snap.exists()) setProfile(snap.data());
         setLoading(false);
       });
 
@@ -52,33 +40,34 @@ export default function Editor() {
   }, []);
 
   const saveProfile = async () => {
-    if (!user) return;
-
     await setDoc(
       doc(db, "editors", user.uid),
       {
         ...profile,
         skills: profile.skills.split(",").map(s => s.trim()),
-        email: user.email,
         active: true,
-        approved: true
+        approved: true,
+        email: user.email
       },
       { merge: true }
     );
 
-    alert("✅ Profile saved");
+    alert("✅ Saved");
   };
 
-  if (loading) return <div style={{color:"white"}}>Loading...</div>;
+  if (loading) return <div>Loading...</div>;
 
   return (
     <div style={s.page}>
+
+      {/* HEADER */}
       <div style={s.header}>
         <h2>🎬 Editor Dashboard</h2>
 
-        <div style={{ display: "flex", gap: 10 }}>
-          <button onClick={() => router.push("/editor/inbox")} style={s.inbox}>
-            📩 Inbox
+        <div style={{display:"flex",gap:10}}>
+          {/* 🔥 INBOX BUTTON */}
+          <button style={s.inbox} onClick={()=>router.push("/editor/inbox")}>
+            Inbox
           </button>
 
           <button onClick={() => signOut(auth)} style={s.logout}>
@@ -87,34 +76,35 @@ export default function Editor() {
         </div>
       </div>
 
+      {/* PROFILE */}
       <div style={s.card}>
         <h3>Profile</h3>
 
         <input
           placeholder="Name"
-          value={profile.name}
+          value={profile.name || ""}
           onChange={(e) => setProfile({ ...profile, name: e.target.value })}
           style={s.input}
         />
 
         <textarea
           placeholder="Bio"
-          value={profile.bio}
+          value={profile.bio || ""}
           onChange={(e) => setProfile({ ...profile, bio: e.target.value })}
           style={s.input}
         />
 
         <input
           placeholder="Skills"
-          value={profile.skills}
+          value={profile.skills?.join?.(", ") || ""}
           onChange={(e) => setProfile({ ...profile, skills: e.target.value })}
           style={s.input}
         />
 
         <input
           placeholder="Price ₹"
-          value={profile.price}
-          onChange={(e) => setProfile({ ...profile, price: e.target.value })}
+          value={profile.price || ""}
+          onChange={(e) => setProfile({ ...profile, price: Number(e.target.value) })}
           style={s.input}
         />
       </div>
@@ -127,11 +117,49 @@ export default function Editor() {
 }
 
 const s = {
-  page:{minHeight:"100vh",padding:20,background:"linear-gradient(135deg,#020617,#0f172a,#1e1b4b)",color:"white"},
-  header:{display:"flex",justifyContent:"space-between",marginBottom:20},
-  logout:{background:"#ef4444",border:"none",padding:"8px 14px",borderRadius:8,color:"white"},
-  inbox:{background:"#7c3aed",border:"none",padding:"8px 14px",borderRadius:8,color:"white"},
-  card:{background:"rgba(30,41,59,0.6)",padding:16,borderRadius:14,marginBottom:16},
-  input:{width:"100%",padding:10,marginTop:8,borderRadius:8,border:"none",background:"#0f172a",color:"white"},
-  save:{width:"100%",padding:12,background:"#7c3aed",border:"none",borderRadius:10,color:"white"}
+  page:{
+    minHeight:"100vh",
+    padding:20,
+    background:"linear-gradient(135deg,#020617,#0f172a,#1e1b4b)",
+    color:"white"
+  },
+  header:{
+    display:"flex",
+    justifyContent:"space-between",
+    marginBottom:20
+  },
+  inbox:{
+    background:"#6366f1",
+    border:"none",
+    padding:"8px 12px",
+    borderRadius:8,
+    color:"white"
+  },
+  logout:{
+    background:"#ef4444",
+    border:"none",
+    padding:"8px 12px",
+    borderRadius:8,
+    color:"white"
+  },
+  card:{
+    background:"rgba(30,41,59,0.6)",
+    padding:16,
+    borderRadius:12
+  },
+  input:{
+    width:"100%",
+    padding:10,
+    marginTop:8,
+    borderRadius:8
+  },
+  save:{
+    marginTop:20,
+    width:"100%",
+    padding:12,
+    background:"#7c3aed",
+    border:"none",
+    borderRadius:10,
+    color:"white"
+  }
 };
