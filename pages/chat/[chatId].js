@@ -9,7 +9,6 @@ import {
   orderBy,
   serverTimestamp,
   doc,
-  setDoc,
   updateDoc
 } from "firebase/firestore";
 
@@ -19,10 +18,9 @@ export default function Chat() {
 
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState("");
-  const [typingUser, setTypingUser] = useState(null);
+  const [chat, setChat] = useState(null);
 
   const bottomRef = useRef();
-
   const user = auth.currentUser;
 
   // 🔄 LOAD CHAT + MESSAGES
@@ -32,8 +30,7 @@ export default function Chat() {
     const chatRef = doc(db, "chats", chatId);
 
     const unsubChat = onSnapshot(chatRef, (snap) => {
-      const data = snap.data();
-      setTypingUser(data?.typing || null);
+      setChat(snap.data());
     });
 
     const q = query(
@@ -64,12 +61,12 @@ export default function Chat() {
       createdAt: serverTimestamp()
     });
 
-    // 🔥 UPDATE CHAT (VERY IMPORTANT)
-    await setDoc(doc(db, "chats", chatId), {
+    await updateDoc(doc(db, "chats", chatId), {
       lastMessage: text,
       lastUpdated: serverTimestamp(),
-      typing: null
-    }, { merge: true });
+      [`seen.${user.uid}`]: true,
+      [`typing.${user.uid}`]: false
+    });
 
     setText("");
   };
@@ -87,47 +84,93 @@ export default function Chat() {
     });
   }, [messages]);
 
-  // ⌨️ TYPING
+  // ⌨️ TYPING SYSTEM (REAL)
   const handleTyping = async (val) => {
     setText(val);
 
-    await setDoc(doc(db, "chats", chatId), {
-      typing: user.uid
-    }, { merge: true });
+    await updateDoc(doc(db, "chats", chatId), {
+      [`typing.${user.uid}`]: true
+    });
 
     setTimeout(() => {
-      setDoc(doc(db, "chats", chatId), {
-        typing: null
-      }, { merge: true });
+      updateDoc(doc(db, "chats", chatId), {
+        [`typing.${user.uid}`]: false
+      });
     }, 1000);
+  };
+
+  const otherTyping = chat?.typing &&
+    Object.entries(chat.typing).find(
+      ([uid, val]) => uid !== user?.uid && val
+    );
+
+  // 💰 DEAL ACTIONS
+  const acceptDeal = async () => {
+    await updateDoc(doc(db, "chats", chatId), {
+      "deal.status": "accepted"
+    });
+  };
+
+  const counterDeal = async () => {
+    const price = prompt("Enter counter offer:");
+    if (!price) return;
+
+    await updateDoc(doc(db, "chats", chatId), {
+      "deal.price": Number(price),
+      "deal.status": "pending",
+      "deal.lastActionBy": user.uid
+    });
   };
 
   return (
     <div style={s.page}>
-      
-      {/* CHAT AREA */}
-      <div style={s.chat}>
-        {messages.map((m) => (
-          <div
-            key={m.id}
-            style={{
-              ...s.msg,
-              alignSelf: m.sender === user?.uid ? "flex-end" : "flex-start",
-              background: m.sender === user?.uid ? "#6366f1" : "#334155"
-            }}
-          >
-            {m.text}
 
-            <div style={s.meta}>
-              {m.sender === user?.uid && (m.seen ? "✔✔" : "✔")}
+      {/* HEADER */}
+      <div style={s.header}>
+        <button onClick={() => router.back()} style={s.back}>←</button>
+        <div>
+          <div style={s.name}>Chat</div>
+          {otherTyping && <div style={s.typing}>typing...</div>}
+        </div>
+      </div>
+
+      {/* DEAL BOX */}
+      {chat?.deal && (
+        <div style={s.dealBox}>
+          <div>💰 ₹{chat.deal.price}</div>
+          <div>Status: {chat.deal.status}</div>
+
+          {chat.deal.status !== "accepted" && (
+            <div style={{ display: "flex", gap: 6 }}>
+              <button onClick={acceptDeal} style={s.accept}>Accept</button>
+              <button onClick={counterDeal} style={s.counter}>Counter</button>
             </div>
-          </div>
-        ))}
+          )}
+        </div>
+      )}
 
-        {/* Typing */}
-        {typingUser && typingUser !== user?.uid && (
-          <div style={s.typing}>Typing...</div>
-        )}
+      {/* CHAT */}
+      <div style={s.chat}>
+        {messages.map((m) => {
+          const isMe = m.sender === user?.uid;
+
+          return (
+            <div
+              key={m.id}
+              style={{
+                ...s.msg,
+                alignSelf: isMe ? "flex-end" : "flex-start",
+                background: isMe ? "#6366f1" : "#1e293b"
+              }}
+            >
+              {m.text}
+
+              <div style={s.meta}>
+                {isMe && (m.seen ? "✔✔" : "✔")}
+              </div>
+            </div>
+          );
+        })}
 
         <div ref={bottomRef} />
       </div>
@@ -140,7 +183,7 @@ export default function Chat() {
           placeholder="Type message..."
           style={s.input}
         />
-        <button onClick={send} style={s.btn}>Send</button>
+        <button onClick={send} style={s.btn}>➤</button>
       </div>
     </div>
   );
@@ -154,48 +197,94 @@ const s = {
     background: "linear-gradient(135deg,#020617,#0f172a,#1e1b4b)",
     color: "white"
   },
+
+  header: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    padding: 12,
+    borderBottom: "1px solid rgba(255,255,255,0.1)"
+  },
+
+  back: {
+    background: "none",
+    border: "none",
+    color: "white",
+    fontSize: 18
+  },
+
+  name: { fontWeight: 600 },
+  typing: { fontSize: 12, color: "#94a3b8" },
+
+  dealBox: {
+    margin: 10,
+    padding: 12,
+    borderRadius: 12,
+    background: "rgba(124,58,237,0.2)",
+    border: "1px solid rgba(124,58,237,0.4)"
+  },
+
+  accept: {
+    background: "#22c55e",
+    border: "none",
+    padding: "6px 10px",
+    borderRadius: 8,
+    color: "white"
+  },
+
+  counter: {
+    background: "#f59e0b",
+    border: "none",
+    padding: "6px 10px",
+    borderRadius: 8,
+    color: "white"
+  },
+
   chat: {
     flex: 1,
-    padding: 10,
+    padding: 12,
     display: "flex",
     flexDirection: "column",
     gap: 8,
     overflowY: "auto"
   },
+
   msg: {
     padding: 10,
-    borderRadius: 12,
+    borderRadius: 14,
     maxWidth: "70%",
     fontSize: 14
   },
+
   meta: {
     fontSize: 10,
     opacity: 0.7,
     marginTop: 4,
     textAlign: "right"
   },
-  typing: {
-    fontSize: 12,
-    opacity: 0.7
-  },
+
   inputRow: {
     display: "flex",
     gap: 6,
     padding: 10,
     borderTop: "1px solid rgba(255,255,255,0.1)"
   },
+
   input: {
     flex: 1,
     padding: 12,
     borderRadius: 10,
     border: "none",
-    outline: "none"
+    outline: "none",
+    background: "#0f172a",
+    color: "white"
   },
+
   btn: {
     background: "#7c3aed",
-    color: "white",
     border: "none",
-    padding: "10px 16px",
-    borderRadius: 10
+    padding: "10px 14px",
+    borderRadius: 10,
+    color: "white"
   }
 };
