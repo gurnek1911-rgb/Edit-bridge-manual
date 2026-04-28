@@ -1,295 +1,278 @@
+"use client";
+
 import { useEffect, useState } from "react";
-import { auth, db } from "../../lib/firebase";
+import { db, auth } from "../../lib/firebase";
+import { doc, setDoc, onSnapshot } from "firebase/firestore";
 import { onAuthStateChanged, signOut } from "firebase/auth";
-import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { useRouter } from "next/router";
 
 export default function Editor() {
   const router = useRouter();
 
-  const [editor, setEditor] = useState(null);
+  const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [portfolio, setPortfolio] = useState("");
-  const [showLogoutModal, setShowLogoutModal] = useState(false);
-  const [saving, setSaving] = useState(false);
 
+  const [profile, setProfile] = useState({
+    name: "",
+    bio: "",
+    price: "",
+    skills: "",
+    portfolio: []
+  });
+
+  // 🔐 AUTH + LOAD DATA
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (u) => {
-      if (!u) return router.replace("/login?type=editor");
+    const unsub = onAuthStateChanged(auth, (u) => {
+      if (!u) return router.replace("/login");
 
-      const snap = await getDoc(doc(db, "editors", u.uid));
-      if (!snap.exists()) {
-        alert("Editor not found");
-        return router.replace("/");
-      }
+      setUser(u);
 
-      const data = snap.data();
-      if (!data.approved) {
-        alert("Wait for admin approval");
-        return router.replace("/");
-      }
+      const ref = doc(db, "editors", u.uid);
 
-      setEditor({ uid: u.uid, ...data });
-      setPortfolio(data.portfolio || "");
-      setLoading(false);
+      const unsubDoc = onSnapshot(ref, (snap) => {
+        if (snap.exists()) {
+          setProfile(snap.data());
+        }
+        setLoading(false);
+      });
+
+      return () => unsubDoc();
     });
 
     return () => unsub();
   }, []);
 
-  const savePortfolio = async () => {
-    setSaving(true);
-    await updateDoc(doc(db, "editors", editor.uid), { portfolio });
-    setSaving(false);
-    alert("Portfolio Updated ✅");
+  // 💾 SAVE PROFILE
+  const saveProfile = async () => {
+    await setDoc(
+      doc(db, "editors", user.uid),
+      {
+        ...profile,
+        skills: profile.skills.split(",").map(s => s.trim()),
+        active: true,
+        approved: true,
+        email: user.email
+      },
+      { merge: true }
+    );
+
+    alert("✅ Profile updated");
   };
 
-  const handleLogout = () => setShowLogoutModal(true);
+  // ➕ ADD PORTFOLIO ITEM
+  const addPortfolio = () => {
+    setProfile({
+      ...profile,
+      portfolio: [
+        ...(profile.portfolio || []),
+        { title: "", link: "", thumbnail: "" }
+      ]
+    });
+  };
 
-  const confirmLogout = async () => {
-    setShowLogoutModal(false);
-    await signOut(auth);
-    router.push("/");
+  // ✏️ UPDATE PORTFOLIO ITEM
+  const updatePortfolio = (i, key, value) => {
+    const updated = [...profile.portfolio];
+    updated[i][key] = value;
+    setProfile({ ...profile, portfolio: updated });
+  };
+
+  // ❌ REMOVE PORTFOLIO
+  const removePortfolio = (i) => {
+    const updated = profile.portfolio.filter((_, index) => index !== i);
+    setProfile({ ...profile, portfolio: updated });
   };
 
   if (loading) {
     return (
-      <div style={s.loaderPage}>
-        <style>{css}</style>
+      <div style={s.loader}>
         <div style={s.spinner}></div>
       </div>
     );
   }
 
-  // Extract YouTube/Drive embed URL
-  const getEmbedUrl = (url) => {
-    if (!url) return null;
-    const yt = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&]+)/);
-    if (yt) return `https://www.youtube.com/embed/${yt[1]}`;
-    const drive = url.match(/drive\.google\.com\/file\/d\/([^/]+)/);
-    if (drive) return `https://drive.google.com/file/d/${drive[1]}/preview`;
-    return null;
-  };
-
-  const embedUrl = getEmbedUrl(portfolio);
-
   return (
     <div style={s.page}>
-      <style>{css}</style>
-
-      {/* ✅ LOGOUT CONFIRMATION MODAL */}
-      {showLogoutModal && (
-        <div style={s.overlay}>
-          <div style={s.modal}>
-            <h3 style={{ margin: "0 0 8px 0" }}>Logout?</h3>
-            <p style={{ color: "#94a3b8", fontSize: 14, margin: "0 0 20px 0" }}>
-              Do you really want to logout and go to homepage?
-            </p>
-            <div style={{ display: "flex", gap: 10 }}>
-              <button onClick={() => setShowLogoutModal(false)} style={s.modalCancel}>
-                Stay
-              </button>
-              <button onClick={confirmLogout} style={s.modalConfirm}>
-                Yes, Logout
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* HEADER */}
       <div style={s.header}>
-        <h1 style={s.heading}>🎬 Editor Dashboard</h1>
-        <button style={s.logoutBtn} onClick={handleLogout}>Logout</button>
+        <h2>🎬 Editor Dashboard</h2>
+        <button onClick={() => signOut(auth)} style={s.logout}>
+          Logout
+        </button>
       </div>
 
-      {/* PROFILE CARD */}
+      {/* PROFILE */}
       <div style={s.card}>
-        <div style={s.avatar}>{editor.name?.[0]?.toUpperCase() || "E"}</div>
-        <div>
-          <h2 style={s.name}>{editor.name}</h2>
-          <p style={s.detail}>{editor.email}</p>
-          <p style={s.detail}>Skills: {editor.skills?.join(", ") || "None"}</p>
-          <p style={s.price}>₹{editor.price}</p>
-        </div>
+        <h3>Profile</h3>
+
+        <input
+          placeholder="Name"
+          value={profile.name || ""}
+          onChange={(e) => setProfile({ ...profile, name: e.target.value })}
+          style={s.input}
+        />
+
+        <textarea
+          placeholder="Bio"
+          value={profile.bio || ""}
+          onChange={(e) => setProfile({ ...profile, bio: e.target.value })}
+          style={s.input}
+        />
+
+        <input
+          placeholder="Skills (comma separated)"
+          value={profile.skills?.join?.(", ") || profile.skills || ""}
+          onChange={(e) => setProfile({ ...profile, skills: e.target.value })}
+          style={s.input}
+        />
+
+        <input
+          placeholder="Price ₹"
+          value={profile.price || ""}
+          onChange={(e) => setProfile({ ...profile, price: Number(e.target.value) })}
+          style={s.input}
+        />
       </div>
 
       {/* PORTFOLIO */}
       <div style={s.card}>
-        <h3 style={s.sectionTitle}>🎥 Portfolio Video</h3>
-        <input
-          value={portfolio}
-          onChange={(e) => setPortfolio(e.target.value)}
-          placeholder="Paste YouTube or Google Drive link"
-          style={s.input}
-        />
+        <div style={s.row}>
+          <h3>Portfolio</h3>
+          <button onClick={addPortfolio} style={s.addBtn}>+ Add</button>
+        </div>
 
-        {/* ✅ FIX: Use iframe embed instead of <video> for Drive/YouTube */}
-        {embedUrl ? (
-          <iframe
-            src={embedUrl}
-            style={{ width: "100%", height: 200, borderRadius: 10, marginTop: 10, border: "none" }}
-            allowFullScreen
-          />
-        ) : portfolio ? (
-          <p style={{ color: "#f59e0b", fontSize: 13, marginTop: 8 }}>
-            ⚠️ Paste a valid YouTube or Google Drive link
-          </p>
-        ) : null}
+        {(profile.portfolio || []).map((item, i) => (
+          <div key={i} style={s.portItem}>
+            <input
+              placeholder="Title"
+              value={item.title}
+              onChange={(e) => updatePortfolio(i, "title", e.target.value)}
+              style={s.input}
+            />
 
-        <button style={s.saveBtn} onClick={savePortfolio} disabled={saving}>
-          {saving ? "Saving..." : "Save Portfolio"}
-        </button>
+            <input
+              placeholder="Video Link"
+              value={item.link}
+              onChange={(e) => updatePortfolio(i, "link", e.target.value)}
+              style={s.input}
+            />
+
+            <input
+              placeholder="Thumbnail URL"
+              value={item.thumbnail}
+              onChange={(e) => updatePortfolio(i, "thumbnail", e.target.value)}
+              style={s.input}
+            />
+
+            <button onClick={() => removePortfolio(i)} style={s.delete}>
+              Delete
+            </button>
+          </div>
+        ))}
       </div>
 
-      {/* INBOX BUTTON */}
-      <button style={s.inboxBtn} onClick={() => router.push("/editor/inbox")}>
-        📩 View Inbox
+      {/* SAVE */}
+      <button onClick={saveProfile} style={s.save}>
+        Save Profile
       </button>
     </div>
   );
 }
 
-const css = `
-  body { margin: 0; font-family: sans-serif; }
-  @keyframes spin { to { transform: rotate(360deg); } }
-`;
-
 const s = {
   page: {
     minHeight: "100vh",
-    padding: "0 0 40px 0",
+    padding: 20,
     background: "linear-gradient(135deg,#020617,#0f172a,#1e1b4b)",
-    color: "white",
+    color: "white"
   },
-  loaderPage: {
-    height: "100vh",
-    display: "flex",
-    justifyContent: "center",
-    alignItems: "center",
-    background: "#020617",
-  },
-  spinner: {
-    width: 36,
-    height: 36,
-    border: "3px solid #333",
-    borderTop: "3px solid #7c3aed",
-    borderRadius: "50%",
-    animation: "spin 1s linear infinite",
-  },
-  overlay: {
-    position: "fixed",
-    inset: 0,
-    background: "rgba(0,0,0,0.7)",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    zIndex: 100,
-  },
-  modal: {
-    background: "#1e293b",
-    borderRadius: 16,
-    padding: 24,
-    width: 280,
-    textAlign: "center",
-    border: "1px solid rgba(255,255,255,0.1)",
-  },
-  modalCancel: {
-    flex: 1,
-    padding: "10px 16px",
-    background: "#334155",
-    border: "none",
-    color: "white",
-    borderRadius: 10,
-    cursor: "pointer",
-    fontWeight: 600,
-  },
-  modalConfirm: {
-    flex: 1,
-    padding: "10px 16px",
-    background: "#ef4444",
-    border: "none",
-    color: "white",
-    borderRadius: 10,
-    cursor: "pointer",
-    fontWeight: 600,
-  },
+
   header: {
     display: "flex",
     justifyContent: "space-between",
-    alignItems: "center",
-    padding: "16px 20px",
-    borderBottom: "1px solid rgba(255,255,255,0.08)",
+    marginBottom: 20
   },
-  heading: { margin: 0, fontSize: 18, fontWeight: 800 },
-  logoutBtn: {
+
+  logout: {
     background: "#ef4444",
     border: "none",
-    color: "white",
-    padding: "8px 16px",
+    padding: "8px 14px",
     borderRadius: 8,
-    cursor: "pointer",
-    fontWeight: 600,
+    color: "white"
   },
+
   card: {
-    background: "#1e293b",
-    margin: "16px 16px 0",
-    padding: 20,
-    borderRadius: 16,
-    display: "flex",
-    gap: 16,
-    alignItems: "flex-start",
-    flexWrap: "wrap",
+    background: "rgba(30,41,59,0.6)",
+    padding: 16,
+    borderRadius: 14,
+    marginBottom: 16,
+    backdropFilter: "blur(10px)"
   },
-  avatar: {
-    width: 52,
-    height: 52,
-    borderRadius: "50%",
-    background: "linear-gradient(135deg,#7c3aed,#6366f1)",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontSize: 22,
-    fontWeight: 700,
-    flexShrink: 0,
-  },
-  name: { margin: "0 0 4px 0", fontSize: 18, fontWeight: 700 },
-  detail: { margin: "2px 0", color: "#94a3b8", fontSize: 13 },
-  price: { margin: "6px 0 0 0", color: "#a78bfa", fontWeight: 600 },
-  sectionTitle: { margin: "0 0 12px 0", fontSize: 15, fontWeight: 700, width: "100%" },
+
   input: {
     width: "100%",
-    padding: "11px 14px",
-    borderRadius: 10,
-    border: "1px solid rgba(255,255,255,0.1)",
+    padding: 10,
+    marginTop: 8,
+    borderRadius: 8,
+    border: "none",
     background: "#0f172a",
-    color: "white",
-    fontSize: 14,
-    outline: "none",
-    boxSizing: "border-box",
+    color: "white"
   },
-  saveBtn: {
-    marginTop: 12,
-    padding: "10px 20px",
+
+  row: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center"
+  },
+
+  addBtn: {
     background: "#22c55e",
     border: "none",
-    color: "white",
-    borderRadius: 10,
-    fontWeight: 600,
-    cursor: "pointer",
+    padding: "6px 10px",
+    borderRadius: 8,
+    color: "white"
   },
-  inboxBtn: {
-    display: "block",
-    margin: "16px 16px 0",
-    width: "calc(100% - 32px)",
-    padding: 14,
+
+  portItem: {
+    marginTop: 10,
+    padding: 10,
+    background: "#1e293b",
+    borderRadius: 10
+  },
+
+  delete: {
+    marginTop: 6,
+    background: "#ef4444",
+    border: "none",
+    padding: "6px 10px",
+    borderRadius: 8,
+    color: "white"
+  },
+
+  save: {
+    width: "100%",
+    padding: 12,
     background: "#7c3aed",
     border: "none",
+    borderRadius: 10,
     color: "white",
-    borderRadius: 14,
-    fontWeight: 700,
-    fontSize: 15,
-    cursor: "pointer",
-    textAlign: "center",
+    fontWeight: 700
   },
+
+  loader: {
+    height: "100vh",
+    display: "flex",
+    justifyContent: "center",
+    alignItems: "center"
+  },
+
+  spinner: {
+    width: 40,
+    height: 40,
+    border: "4px solid #333",
+    borderTop: "4px solid #7c3aed",
+    borderRadius: "50%",
+    animation: "spin 1s linear infinite"
+  }
 };
